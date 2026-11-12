@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+frontend/node_modules/
+.DS_Store
+# 학생 개인정보가 든 샘플은 커밋하지 않는다
+reference/*.xlsx
+.tools/
+# 실제 이름이 든 원본 회의록 양식과 작업 지시 문서는 이 컴퓨터에만 둔다
+reference/minutes_template.hwpx
+생활지도_학생선도_데스크톱앱_프롬프트.md
+frontend/*.tsbuildinfo

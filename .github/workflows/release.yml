@@ -1,0 +1,27 @@
+# v* 태그를 올리면 학교 컴퓨터용 설치 파일(GuidanceStats-install.zip)을 릴리스에 붙인다.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 설치 파일 묶기
+        run: |
+          mkdir -p dist/GuidanceStats-install
+          cp installer/install.bat installer/README.txt dist/GuidanceStats-install/
+          (cd dist && zip -r GuidanceStats-install.zip GuidanceStats-install)
+      - name: 릴리스 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/GuidanceStats-install.zip \
+            --title "$GITHUB_REF_NAME" \
+            --notes "학교 컴퓨터(윈도우): GuidanceStats-install.zip 을 내려받아 풀고 install.bat 을 실행하십시오. 자세한 안내는 README 를 보십시오."

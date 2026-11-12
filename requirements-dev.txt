@@ -1,0 +1,5 @@
+# 개발·검사용
+-r requirements.txt
+-r requirements-window.txt
+pytest>=8.0
+httpx>=0.27

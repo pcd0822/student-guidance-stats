@@ -1,0 +1,6 @@
+# 윈도우 cmd·PowerShell 파일은 CRLF 그대로 둔다(내려받은 zip 에서도)
+*.bat -text
+*.ps1 -text
+installer/README.txt -text
+*.sh text eol=lf
+*.command text eol=lf
