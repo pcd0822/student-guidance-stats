@@ -76,6 +76,11 @@ jobs:
           Stop-Process $p.Id -Force
           Get-Content out.log, err.log
           if (-not $ok -or $html -notmatch 'id="root"') { throw "앱 서버가 뜨지 않았습니다" }
+      # 실제 앱 창(pywebview + WebView2)을 열어 화면이 그려지고 창 기능이 이어지는지 확인 후 닫는다
+      - name: 앱 창 자체 시험
+        shell: cmd
+        working-directory: ${{ env.GS_DEST }}
+        run: .venv\Scripts\python.exe -m app --window-selftest 60
 
   macos:
     runs-on: macos-latest
@@ -95,3 +100,7 @@ jobs:
         run: |
           .venv/bin/python -m pip install -q -r requirements-dev.txt
           .venv/bin/python -m pytest -q
+      - name: 앱 창 자체 시험
+        run: |
+          export APP_DATA_DIR="$RUNNER_TEMP/appdata"
+          .venv/bin/python -m app --window-selftest 60

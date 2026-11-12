@@ -106,6 +106,7 @@ data/                app.db·백업·바꿔 끼운 양식 (git 에 넣지 않음
 pip install -r requirements-dev.txt     # 테스트 도구
 .venv/bin/python -m pytest              # 테스트 (샘플 xlsx 가 reference/ 에 있어야 전부 돕니다)
 .venv/bin/python -m app --no-open --port 8765   # 백엔드만
+.venv/bin/python -m app --window-selftest 30      # 앱 창을 열어 화면·창 기능 연결을 확인하고 닫음
 cd frontend && npm install && npm run dev       # 화면 개발 (/api 는 8765 로 프록시)
 cd frontend && npm run build                    # app/static 에 빌드 — 커밋해 둡니다
 ```
