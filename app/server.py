@@ -105,53 +105,124 @@ def new_school_year(body: Dict[str, Any] = Body(...)):
 
 # ================================================================ 업로드
 
-@app.post("/api/upload/preview")
-async def upload_preview(file: UploadFile = File(...)):
-    data = await file.read()
-    parsed = parse_file(data, file.filename or "")
-    with db.session() as conn:
-        s = S.get_settings(conn)
-        summ = summarize(parsed, s["rules"]["start_month"])
-        y = summ["school_year"] or s["current_year"]
-        exist = {}
-        for m in summ["months"] or []:
-            exist[str(m)] = [e["grade"] for e in S.existing_months(conn, y, [g["grade"] for g in summ["grades"]], m)]
+MULTI_MONTH_MSG = ("이 파일은 %s~%s 기간의 합계라 달별로 나눌 수 없습니다. "
+                   "나이스에서 기간을 한 달씩(예: 3/1~3/31) 나눠 내려받아 함께 올리십시오")
+
+
+def _remember(parsed: Dict[str, Any], summ: Dict[str, Any], file_name: str) -> str:
     token = secrets.token_urlsafe(16)
     with _previews_lock:
         now = time.time()
         for k in [k for k, v in _previews.items() if now - v["t"] > 3600]:
             _previews.pop(k, None)
-        _previews[token] = {"t": now, "parsed": parsed, "file_name": file.filename or ""}
-    summ.update({"token": token, "file_name": file.filename, "existing": exist})
+        _previews[token] = {"t": now, "parsed": parsed, "summary": summ, "file_name": file_name}
+    return token
+
+
+def _preview_one(conn: sqlite3.Connection, data: bytes, file_name: str) -> Dict[str, Any]:
+    """파일 하나 미리 읽기. 읽지 못하면 error 를 담아 돌려준다(여러 파일 중 하나가 틀려도 나머지는 보이게)."""
+    try:
+        parsed = parse_file(data, file_name)
+    except ParseError as e:
+        return {"file_name": file_name, "ok": False, "error": str(e)}
+    s = S.get_settings(conn)
+    summ = summarize(parsed, s["rules"]["start_month"])
+    y = summ["school_year"] or s["current_year"]
+    summ["school_year"] = y
+    summ["multi_month"] = len(summ["months"]) > 1
+    exist = {}
+    for m in summ["months"] or []:
+        exist[str(m)] = [e["grade"] for e in S.existing_months(conn, y, [g["grade"] for g in summ["grades"]], m)]
+    summ.update({"file_name": file_name, "existing": exist, "ok": not summ["multi_month"]})
+    if summ["multi_month"]:
+        summ["error"] = MULTI_MONTH_MSG % (summ["period_from"], summ["period_to"])
+    summ["token"] = _remember(parsed, summ, file_name)
     return summ
+
+
+def _item_month(pv: Dict[str, Any], want: Any) -> int:
+    """저장할 달. 기간이 한 달이면 그 달, 기간을 못 찾았으면 고른 달. 여러 달이면 거절."""
+    months = pv["summary"]["months"]
+    if len(months) > 1:
+        raise S.AppError("%s: " % pv["file_name"] + MULTI_MONTH_MSG % (pv["summary"]["period_from"], pv["summary"]["period_to"]))
+    if len(months) == 1:
+        return months[0]
+    m = int(want or 0)
+    if not 1 <= m <= 12:
+        raise S.AppError("%s: 기간을 찾지 못했습니다. 월을 골라 주십시오" % pv["file_name"])
+    return m
+
+
+@app.post("/api/upload/preview")
+async def upload_preview(file: UploadFile = File(...)):
+    data = await file.read()
+    with db.session() as conn:
+        r = _preview_one(conn, data, file.filename or "")
+    if "token" not in r:
+        raise S.AppError(r["error"])
+    return r
+
+
+@app.post("/api/upload/preview-many")
+async def upload_preview_many(files: List[UploadFile] = File(...)):
+    out = []
+    with db.session() as conn:
+        for f in files:
+            out.append(_preview_one(conn, await f.read(), f.filename or ""))
+    return out
 
 
 @app.post("/api/upload/commit")
 def upload_commit(body: Dict[str, Any] = Body(...)):
-    with _previews_lock:
-        pv = _previews.get(body.get("token") or "")
-    if not pv:
-        raise S.AppError("미리 읽은 파일이 사라졌습니다. 파일을 다시 골라 주십시오", 410)
-    grades = [int(g) for g in body.get("grades") or []]
-    month = int(body.get("month") or 0)
+    items = [{"token": body.get("token"), "month": body.get("month")}]
+    res = _commit_items(items, body.get("grades") or [], bool(body.get("overwrite")))
+    one = res["files"][0]
+    return {"saved": one["saved"], "new_alerts": res["new_alerts"], "school_year": one["school_year"], "month": one["month"]}
+
+
+@app.post("/api/upload/commit-many")
+def upload_commit_many(body: Dict[str, Any] = Body(...)):
+    return _commit_items(body.get("items") or [], body.get("grades") or [], bool(body.get("overwrite")))
+
+
+def _commit_items(items: List[Dict[str, Any]], grades_in: List[Any], overwrite: bool) -> Dict[str, Any]:
+    grades = sorted({int(g) for g in grades_in})
     if not grades:
         raise S.AppError("분석할 학년을 하나 이상 고르십시오")
-    if not 1 <= month <= 12:
-        raise S.AppError("월을 골라 주십시오")
+    if not items:
+        raise S.AppError("올릴 파일이 없습니다")
+    plan = []
+    with _previews_lock:
+        pvs = [_previews.get(it.get("token") or "") for it in items]
+    if any(pv is None for pv in pvs):
+        raise S.AppError("미리 읽은 파일이 사라졌습니다. 파일을 다시 골라 주십시오", 410)
+    seen: Dict[tuple, str] = {}
+    for it, pv in zip(items, pvs):
+        m = _item_month(pv, it.get("month"))
+        y = int(pv["summary"]["school_year"])
+        if (y, m) in seen:
+            raise S.AppError("%d월 파일이 두 개입니다: %s, %s" % (m, seen[(y, m)], pv["file_name"]))
+        seen[(y, m)] = pv["file_name"]
+        plan.append((pv, y, m))
     with db.session() as conn:
-        y = int(body.get("school_year") or S.get_settings(conn)["current_year"])
-        exist = S.existing_months(conn, y, grades, month)
-        if exist and not body.get("overwrite"):
+        exist = []
+        for pv, y, m in plan:
+            exist += S.existing_months(conn, y, grades, m)
+        if exist and not overwrite:
             raise S.AppError(
                 "이미 올린 달입니다: " + ", ".join("%d학년 %d월" % (e["grade"], e["month"]) for e in exist),
                 409,
                 {"existing": exist},
             )
-        res = S.save_upload(conn, pv["parsed"], y, month, grades, pv["file_name"])
+        files, new_alerts = [], 0
+        for pv, y, m in plan:
+            r = S.save_upload(conn, pv["parsed"], y, m, grades, pv["file_name"])
+            new_alerts += r["new_alerts"]
+            files.append({"file_name": pv["file_name"], "school_year": y, "month": m, "saved": r["saved"]})
     with _previews_lock:
-        _previews.pop(body.get("token"), None)
-    res["school_year"] = y
-    return res
+        for it in items:
+            _previews.pop(it.get("token"), None)
+    return {"files": files, "new_alerts": new_alerts}
 
 
 @app.get("/api/uploads")
@@ -207,6 +278,12 @@ def exclusions(school_year: Optional[int] = None):
 def save_exclusion(body: Dict[str, Any] = Body(...)):
     with db.session() as conn:
         return S.save_exclusion(conn, _year(conn, body.get("school_year")), body)
+
+
+@app.post("/api/exclusions/bulk")
+def bulk_exclusions(body: Dict[str, Any] = Body(...)):
+    with db.session() as conn:
+        return S.bulk_add_exclusions(conn, _year(conn, body.get("school_year")), body)
 
 
 @app.delete("/api/exclusions/{eid}")

@@ -172,8 +172,11 @@
     font-size: 12px;
     line-height: 16px;
   }
-  textarea.field {
+  /* :where 로 우선순위를 낮춰 h-48 같은 높이 클래스가 이기게 한다 */
+  :where(textarea.field) {
     height: auto;
+  }
+  textarea.field {
     padding: 8px 12px;
   }
   .field::placeholder {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Download, Plus, ShieldMinus, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Download, Plus, ShieldMinus, Trash2, Users, X } from 'lucide-react'
 import { useApp } from '@/context'
 import { api, download } from '@/lib/api'
 import { cn, normalizeId } from '@/lib/format'
@@ -7,6 +7,7 @@ import { schoolMonths } from '@/lib/months'
 import type { Alert, Counts, ExEntry, Exclusion, Item } from '@/lib/types'
 import { ITEM_LABEL, ITEMS } from '@/lib/types'
 import { Card, Empty, Field, PageTitle, Spinner, Toggle } from '@/components/ui'
+import ExclusionBulk from './ExclusionBulk'
 
 const ZERO: Counts = { abs: 0, late: 0, leave: 0, result: 0 }
 
@@ -24,6 +25,7 @@ export default function Exclusions() {
   const [open, setOpen] = useState<string | null>(null)
   const [focusMonth, setFocusMonth] = useState<number | null>(null)
   const [adding, setAdding] = useState(false)
+  const [bulk, setBulk] = useState(false)
 
   const load = async () => {
     const [l, a] = await Promise.all([api.get<Exclusion[]>('/exclusions', { school_year: year }), api.get<Alert[]>('/alerts', { school_year: year })])
@@ -76,15 +78,28 @@ export default function Exclusions() {
         sub="증빙 서류에 적힌 횟수만 입력합니다. 서류에 없는 미인정은 앱이 알려 드립니다"
         right={
           !readonly && (
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setAdding(true)
-                setOpen(null)
-              }}
-            >
-              <Plus size={16} /> 학생 추가
-            </button>
+            <div className="flex gap-2">
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setAdding(true)
+                  setBulk(false)
+                  setOpen(null)
+                }}
+              >
+                <Plus size={16} /> 학생 한 명 추가
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  setBulk(true)
+                  setAdding(false)
+                  setOpen(null)
+                }}
+              >
+                <Users size={16} /> 여러 학생 한 번에 추가
+              </button>
+            </div>
           )
         }
       />
@@ -151,6 +166,18 @@ export default function Exclusions() {
           </ul>
         )}
       </Card>
+
+      {bulk && (
+        <Card title="여러 학생 한 번에 추가">
+          <ExclusionBulk
+            onClose={() => setBulk(false)}
+            onSaved={() => {
+              setBulk(false)
+              bump()
+            }}
+          />
+        </Card>
+      )}
 
       {adding && (
         <Card title="새 제외 등록">

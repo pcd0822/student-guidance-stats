@@ -365,7 +365,7 @@ def _validate_exclusion(e: Dict[str, Any], records: Dict[int, Dict[str, int]]) -
                 raise AppError("%s월 %s: 기록은 %d회입니다. 서류 횟수 %d회는 기록보다 많습니다" % (m, R.ITEM_LABELS[k], rec[k], tot))
 
 
-def save_exclusion(conn: sqlite3.Connection, year: int, e: Dict[str, Any]) -> Dict[str, Any]:
+def save_exclusion(conn: sqlite3.Connection, year: int, e: Dict[str, Any], sync: bool = True) -> Dict[str, Any]:
     ensure_writable(conn, year)
     sid = normalize_id(e.get("student_id"))
     if not sid:
@@ -402,9 +402,68 @@ def save_exclusion(conn: sqlite3.Connection, year: int, e: Dict[str, Any]) -> Di
     st_all = get_settings(conn)
     recent = [r for r in reasons if r] + [r for r in st_all.get("recent_reasons", []) if r not in reasons]
     db.set_setting(conn, "recent_reasons", recent[:12])
-    new_alerts = sync_alerts(conn, year)
+    new_alerts = sync_alerts(conn, year) if sync else 0
     row = conn.execute("SELECT * FROM exclusions WHERE school_year = ? AND student_id = ?", (year, sid)).fetchone()
     return {"exclusion": _parse_exclusion(row), "new_alerts": new_alerts}
+
+
+def bulk_add_exclusions(conn: sqlite3.Connection, year: int, body: Dict[str, Any]) -> Dict[str, Any]:
+    """여러 학생에게 같은 달·사유·방식의 제외를 한 번에 더한다.
+
+    이미 제외가 등록된 학생은 기존 내용에 더한다(같은 달·같은 사유가 있으면 새 값으로 바꿈).
+    한 명이라도 문제가 있으면 아무것도 저장하지 않고 학생별 문제 목록을 돌려준다.
+    body: {student_ids, reason, mode('all'|'documented'), months:[월], all_period, note,
+           counts: {학번: {월: {abs, late, leave, result}}}}
+    """
+    ensure_writable(conn, year)
+    reason = str(body.get("reason") or "").strip()
+    if not reason:
+        raise AppError("사유를 입력해 주십시오")
+    all_period = bool(body.get("all_period"))
+    mode = body.get("mode") or "all"
+    if mode not in ("all", "documented"):
+        raise AppError("제외 방식을 골라 주십시오")
+    months = sorted({int(m) for m in body.get("months") or []})
+    if not all_period and not months:
+        raise AppError("제외할 달을 하나 이상 고르십시오")
+    ids: List[str] = []
+    for raw in body.get("student_ids") or []:
+        sid = normalize_id(raw)
+        if sid and sid not in ids:
+            ids.append(sid)
+    if not ids:
+        raise AppError("학번을 하나 이상 입력해 주십시오")
+    counts = body.get("counts") or {}
+    note = str(body.get("note") or "").strip()
+    existing = load_exclusions(conn, year)
+    errors, unknown = [], []
+    for sid in ids:
+        info = student_info(conn, year, sid)
+        if not info or not info.get("records"):
+            unknown.append(sid)
+        e = existing.get(sid) or {"student_id": sid, "name": "", "all_period": False, "all_reason": "", "months": {}, "note": ""}
+        e = {"student_id": sid, "name": e.get("name") or (info["name"] if info else ""),
+             "all_period": e.get("all_period"), "all_reason": e.get("all_reason") or "",
+             "months": {k: list(v) for k, v in (e.get("months") or {}).items()}, "note": e.get("note") or ""}
+        if all_period:
+            e["all_period"], e["all_reason"] = True, reason
+        else:
+            for m in months:
+                ent: Dict[str, Any] = {"reason": reason, "mode": mode}
+                if mode == "documented":
+                    c = ((counts.get(sid) or {}).get(str(m)) or {})
+                    ent["counts"] = {k: int(c.get(k, 0) or 0) for k in R.ITEMS}
+                if note:
+                    ent["note"] = note
+                keep = [x for x in e["months"].get(str(m), []) if x.get("reason") != reason]
+                e["months"][str(m)] = keep + [ent]
+        try:
+            save_exclusion(conn, year, e, sync=False)
+        except AppError as err:
+            errors.append({"student_id": sid, "name": e["name"], "message": err.message})
+    if errors:
+        raise AppError("%d명을 저장하지 못했습니다. 아무것도 저장하지 않았습니다" % len(errors), 400, {"errors": errors})
+    return {"saved": len(ids), "unknown": unknown, "new_alerts": sync_alerts(conn, year)}
 
 
 def delete_exclusion(conn: sqlite3.Connection, ex_id: int) -> None:

@@ -46,6 +46,11 @@ export const api = {
       handle<T>(r)
     ),
   del: <T>(path: string) => fetch(`/api${path}`, { method: 'DELETE' }).then((r) => handle<T>(r)),
+  uploadMany: <T>(path: string, files: File[]) => {
+    const fd = new FormData()
+    for (const f of files) fd.append('files', f)
+    return fetch(`/api${path}`, { method: 'POST', body: fd }).then((r) => handle<T>(r))
+  },
   upload: <T>(path: string, file: File) => {
     const fd = new FormData()
     fd.append('file', file)
