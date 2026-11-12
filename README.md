@@ -1,5 +1,7 @@
 # 생활지도·학생선도 통계
 
+[![check](https://github.com/pcd0822/student-guidance-stats/actions/workflows/check.yml/badge.svg)](https://github.com/pcd0822/student-guidance-stats/actions/workflows/check.yml)
+
 구글 스프레드시트 + Apps Script(`reference/Code.gs`)로 하던 「출결 통계 / 생활지도 및 학생선도」 업무를 이 컴퓨터 안에서만 돌아가는 데스크톱 앱으로 옮긴 것입니다. 학생 개인정보는 `data/` 폴더 밖으로 나가지 않습니다(외부 서버·CDN 호출 없음, 처음 설치 때 패키지 내려받기만 예외).
 
 ## 학교 컴퓨터(윈도우)에 설치

@@ -18,10 +18,14 @@ jobs:
           mkdir -p dist/GuidanceStats-install
           cp installer/install.bat installer/README.txt dist/GuidanceStats-install/
           (cd dist && zip -r GuidanceStats-install.zip GuidanceStats-install)
-      - name: 릴리스 만들기
+      - name: 릴리스 만들기(이미 있으면 설치 파일만 바꿔 붙이기)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/GuidanceStats-install.zip \
-            --title "$GITHUB_REF_NAME" \
-            --notes "학교 컴퓨터(윈도우): GuidanceStats-install.zip 을 내려받아 풀고 install.bat 을 실행하십시오. 자세한 안내는 README 를 보십시오."
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/GuidanceStats-install.zip --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/GuidanceStats-install.zip \
+              --title "$GITHUB_REF_NAME" \
+              --notes "학교 컴퓨터(윈도우): GuidanceStats-install.zip 을 내려받아 풀고 install.bat 을 실행하십시오. 자세한 안내는 README 를 보십시오."
+          fi
