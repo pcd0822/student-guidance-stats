@@ -1,10 +1,11 @@
-import { BookOpenCheck, FileText, FileUp, History, LayoutDashboard, Settings as SettingsIcon, ShieldMinus, UserRound } from 'lucide-react'
+import { BookOpenCheck, Contact, FileText, FileUp, History, LayoutDashboard, Settings as SettingsIcon, ShieldMinus, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { AppProvider, useApp, type Page } from './context'
 import { IconTile, Spinner } from './components/ui'
 import { cn } from './lib/format'
 import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
+import Students from './pages/Students'
 import Exclusions from './pages/Exclusions'
 import GuidancePage from './pages/Guidance'
 import PersonalPage from './pages/Personal'
@@ -15,6 +16,7 @@ import Wizard from './pages/Wizard'
 const MENU: { key: Page; label: string; icon: LucideIcon }[] = [
   { key: 'dashboard', label: '대시보드', icon: LayoutDashboard },
   { key: 'upload', label: '자료 올리기', icon: FileUp },
+  { key: 'students', label: '학생 관리', icon: Contact },
   { key: 'exclusions', label: '제외 처리', icon: ShieldMinus },
   { key: 'guidance', label: '생활지도 이력', icon: History },
   { key: 'personal', label: '개인별 통계', icon: UserRound },
@@ -88,6 +90,7 @@ function Shell() {
         )}
         {page === 'dashboard' && <Dashboard />}
         {page === 'upload' && <Upload />}
+        {page === 'students' && <Students />}
         {page === 'exclusions' && <Exclusions />}
         {page === 'guidance' && <GuidancePage />}
         {page === 'personal' && <PersonalPage />}

@@ -77,6 +77,8 @@ export interface LookupRow {
   carry: number
   months: MonthRes[]
   has_exclusion: boolean
+  status?: string | null
+  crisis?: boolean
 }
 
 export interface Stage {
@@ -120,6 +122,8 @@ export interface TargetRow {
   count_from: number
   alerts: number
   became_target: boolean
+  status?: string | null
+  crisis?: boolean
 }
 
 export interface Dashboard {
@@ -256,4 +260,27 @@ export interface Personal {
   guidance: Guidance[]
   exclusion: Exclusion | null
   count_from: number | null
+  roster?: { status: string; status_date: string | null; crisis: boolean; note: string | null } | null
+}
+
+export interface RosterStudent {
+  id: number
+  student_id: string
+  name: string
+  grade: number
+  class: number
+  number: number
+  status: string
+  status_date: string | null
+  crisis: boolean
+  note: string | null
+  source: 'upload' | 'manual'
+  score: number | null
+  carry: number | null
+  months: number[]
+  raw: Counts | null
+  guidance_count: number
+  has_exclusion: boolean
+  alerts: number
+  is_target: boolean
 }

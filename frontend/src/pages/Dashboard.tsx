@@ -6,7 +6,7 @@ import { cn } from '@/lib/format'
 import { monthsLabel, sortMonths } from '@/lib/months'
 import type { Dashboard as D, Item, LookupRow, MonthRes, TargetRow } from '@/lib/types'
 import { ITEMS } from '@/lib/types'
-import { Card, CountCell, Empty, Legend, MonthChips, PageTitle, Spinner, StageBadge, Stat, Toggle } from '@/components/ui'
+import { Card, CountCell, Empty, Legend, Loading, MonthChips, PageTitle, Spinner, StageBadge, Stat, StatusBadge, Toggle } from '@/components/ui'
 
 // 화면을 옮겨 다녀도 고른 달을 기억한다(이번 실행 동안만)
 const memo: Record<string, { lookup?: number[]; target?: number[]; expand?: boolean; apply?: boolean }> = {}
@@ -161,7 +161,9 @@ export default function Dashboard() {
                 <span className="text-xs text-muted">{apply ? '제외·초기화를 적용한 값입니다' : '원자료 그대로입니다. 제외·초기화는 대상자 명단에만 적용합니다'}</span>
               </div>
             </div>
-            {!lookupMonths.length ? (
+            {!data ? (
+              <Loading />
+            ) : !lookupMonths.length ? (
               <p className="px-5 py-8 text-center text-sm text-muted">위에서 더할 달을 고르십시오.</p>
             ) : rows.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-muted">{monthsLabel(lookupMonths, start)}에 미인정이 있는 학생이 없습니다.</p>
@@ -193,6 +195,7 @@ export default function Dashboard() {
                             <button className="hover:text-accent-ink" onClick={() => go('personal', { sid: r.student_id })}>
                               {r.name}
                             </button>
+                            <StatusBadge status={r.status} crisis={r.crisis} />
                           </td>
                           {ITEMS.map((k) => (
                             <td key={k}>
@@ -233,7 +236,9 @@ export default function Dashboard() {
                 학생마다 마지막 생활지도 다음 달부터 체크한 달까지 제외·이월 규칙을 적용해 셉니다. 기준 {state!.settings.rules.threshold}점 이상.
               </p>
             </div>
-            {targets.length === 0 ? (
+            {!data ? (
+              <Loading />
+            ) : targets.length === 0 ? (
               <p className="px-5 py-8 text-center text-sm text-muted">대상자가 없습니다.</p>
             ) : (
               <div className="max-h-[560px] overflow-auto">
@@ -310,6 +315,7 @@ function TargetTr({ t, picked, onPick, onOpen }: { t: TargetRow; picked: boolean
         <button className="hover:text-accent-ink" onClick={onOpen}>
           {t.name}
         </button>
+        <StatusBadge status={t.status} crisis={t.crisis} />
         {t.alerts > 0 && (
           <span
             className="ml-2 inline-flex h-5 items-center gap-1 rounded px-1.5 align-middle text-xs font-medium text-late-ink"

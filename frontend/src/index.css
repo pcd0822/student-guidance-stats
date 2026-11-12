@@ -230,6 +230,9 @@
     height: 40px;
     padding: 0 12px;
     border-bottom: 1px solid var(--line);
+  }
+  /* 글자색은 :where 로 우선순위를 낮춰 text-absent 같은 색 클래스가 이기게 한다 */
+  :where(.tbl td) {
     color: var(--ink);
   }
   .tbl tr:last-child td {

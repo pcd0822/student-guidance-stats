@@ -3,7 +3,7 @@ import { api } from '@/lib/api'
 import type { AppState } from '@/lib/types'
 import { Modal } from '@/components/ui'
 
-export type Page = 'dashboard' | 'upload' | 'exclusions' | 'guidance' | 'personal' | 'minutes' | 'settings'
+export type Page = 'dashboard' | 'upload' | 'students' | 'exclusions' | 'guidance' | 'personal' | 'minutes' | 'settings'
 
 export interface NavParams {
   sid?: string

@@ -5,7 +5,7 @@ import { api, ApiError } from '@/lib/api'
 import { cn } from '@/lib/format'
 import { schoolMonths, schoolOrder } from '@/lib/months'
 import type { Upload as U } from '@/lib/types'
-import { Card, PageTitle, Spinner } from '@/components/ui'
+import { Card, Loading, PageTitle, Spinner } from '@/components/ui'
 
 interface Preview {
   ok: boolean
@@ -38,7 +38,7 @@ export default function Upload() {
   const [busy, setBusy] = useState(false)
   const [grades, setGrades] = useState<number[]>([])
   const [done, setDone] = useState<Done | null>(null)
-  const [list, setList] = useState<U[]>([])
+  const [list, setList] = useState<U[] | null>(null)
   const [drag, setDrag] = useState(false)
   const input = useRef<HTMLInputElement>(null)
 
@@ -318,7 +318,9 @@ export default function Upload() {
       )}
 
       <Card title={`올린 자료 (${year}학년도)`} pad={false}>
-        {list.length === 0 ? (
+        {!list ? (
+          <Loading />
+        ) : list.length === 0 ? (
           <p className="px-5 py-8 text-center text-sm text-muted">아직 올린 자료가 없습니다.</p>
         ) : (
           <table className="tbl">

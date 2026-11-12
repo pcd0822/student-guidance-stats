@@ -84,6 +84,22 @@ CREATE TABLE IF NOT EXISTS guidance (
     created_at  TEXT DEFAULT (datetime('now','localtime'))
 );
 CREATE INDEX IF NOT EXISTS ix_guidance_student ON guidance(school_year, student_id);
+CREATE TABLE IF NOT EXISTS students (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    school_year INTEGER NOT NULL,
+    student_id  TEXT NOT NULL,
+    name        TEXT,
+    grade       INTEGER,
+    class       INTEGER,
+    number      INTEGER,
+    status      TEXT DEFAULT '재학',     -- 학적 상태
+    status_date TEXT,                    -- 변동일 YYYY-MM-DD
+    crisis      INTEGER DEFAULT 0,       -- 위기관리학생
+    note        TEXT,
+    source      TEXT DEFAULT 'upload',   -- upload(나이스 자료) | manual(직접 추가)
+    updated_at  TEXT DEFAULT (datetime('now','localtime')),
+    UNIQUE(school_year, student_id)
+);
 CREATE TABLE IF NOT EXISTS meetings (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     school_year INTEGER NOT NULL,

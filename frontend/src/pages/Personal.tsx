@@ -7,7 +7,7 @@ import { cn, normalizeId } from '@/lib/format'
 import { monthsLabel } from '@/lib/months'
 import type { Personal } from '@/lib/types'
 import { ITEM_LABEL, ITEMS } from '@/lib/types'
-import { Card, CountCell, Empty, Legend, PageTitle, Spinner, StageBadge } from '@/components/ui'
+import { Card, CountCell, Empty, Legend, Loading, PageTitle, Spinner, StageBadge, StatusBadge } from '@/components/ui'
 
 export default function PersonalPage() {
   const { params, year, toast, version } = useApp()
@@ -15,6 +15,7 @@ export default function PersonalPage() {
   const [sid, setSid] = useState(params.sid || '')
   const [data, setData] = useState<Personal | null>(null)
   const [err, setErr] = useState('')
+  const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -28,6 +29,7 @@ export default function PersonalPage() {
   useEffect(() => {
     if (!sid) return
     setErr('')
+    setLoading(true)
     api
       .get<Personal>(`/personal/${sid}`, { school_year: year })
       .then(setData)
@@ -35,6 +37,7 @@ export default function PersonalPage() {
         setData(null)
         setErr(e.message)
       })
+      .finally(() => setLoading(false))
   }, [sid, year, version])
 
   const base = data ? `${year}학년도_개인별통계_${data.student_id}_${data.name}` : ''
@@ -160,7 +163,12 @@ export default function PersonalPage() {
       </form>
 
       {err && <p className="text-sm text-absent">{err}</p>}
-      {!data && !err && (
+      {loading && !data && (
+        <div className="card">
+          <Loading />
+        </div>
+      )}
+      {!data && !err && !loading && (
         <div className="card">
           <Empty icon={UserRound} title="학번을 입력하십시오" sub="대시보드에서 이름을 눌러도 이 화면으로 옵니다." />
         </div>
@@ -172,7 +180,16 @@ export default function PersonalPage() {
               <p className="num text-xs text-muted">
                 {year}학년도 · {data.grade}학년 {data.class}반 {data.number}번 · {data.student_id}
               </p>
-              <p className="text-xl font-semibold text-ink-strong">{data.name}</p>
+              <p className="text-xl font-semibold text-ink-strong">
+                {data.name}
+                <StatusBadge status={data.roster?.status} crisis={data.roster?.crisis} />
+              </p>
+              {data.roster?.status && data.roster.status !== '재학' && (
+                <p className="text-xs text-muted">
+                  학적: {data.roster.status}
+                  {data.roster.status_date ? ` (${data.roster.status_date})` : ''}
+                </p>
+              )}
             </div>
             <div className="flex items-end gap-8">
               <div>

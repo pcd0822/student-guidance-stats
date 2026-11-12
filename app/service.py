@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from . import alerts as A
 from . import db
+from . import roster as RO
 from . import rules as R
 from .parse_neis import normalize_id
 
@@ -166,6 +167,7 @@ def lookup(conn: sqlite3.Connection, year: int, grade: int, months: Iterable[int
     students = load_students(conn, year, grade)
     excl = load_exclusions(conn, year)
     guid = load_guidance(conn, year)
+    roster = RO.roster_map(conn, year)
     rows = []
     for sid, st in students.items():
         res = R.compute_student(st["records"], months, rules, excl.get(sid), guid.get(sid), apply_exclusions=True, apply_reset=apply)
@@ -183,6 +185,7 @@ def lookup(conn: sqlite3.Connection, year: int, grade: int, months: Iterable[int
             "totals": tot, "raw": res["raw"], "doc": res["doc"] if apply else _doc_annotations(res),
             "score": sc, "carry": carry, "months": res["months"],
             "has_exclusion": sid in excl,
+            "status": (roster.get(sid) or {}).get("status"), "crisis": bool((roster.get(sid) or {}).get("crisis")),
         })
     rows.sort(key=lambda r: r["student_id"])
     return {"rows": rows, "months": R.sort_months(months, rules["start_month"])}
@@ -213,6 +216,7 @@ def target_rows(conn: sqlite3.Connection, year: int, grade: int, months: Optiona
         )
     }
     th = int(rules["threshold"])
+    roster = RO.roster_map(conn, year)
     out = []
     for sid, st in students.items():
         g = guid.get(sid, [])
@@ -229,6 +233,7 @@ def target_rows(conn: sqlite3.Connection, year: int, grade: int, months: Optiona
             "stage": stage, "guidance_count": len(g),
             "last_guidance": last, "count_from": cs if cs and cs > 0 else start,
             "alerts": open_alerts.get(sid, (0, 0))[0], "became_target": bool(open_alerts.get(sid, (0, 0))[1]),
+            "status": (roster.get(sid) or {}).get("status"), "crisis": bool((roster.get(sid) or {}).get("crisis")),
         })
     out.sort(key=lambda r: (not r["became_target"], r["student_id"]))
     return out
@@ -291,6 +296,7 @@ def save_upload(
             ],
         )
         saved[str(g)] = len(studs)
+    RO.sync_roster(conn, year)
     new_alerts = sync_alerts(conn, year)
     st = get_settings(conn)
     if not st.get("school_name") and parsed.get("school_name"):
@@ -322,15 +328,19 @@ def student_info(conn: sqlite3.Connection, year: int, sid: str) -> Optional[Dict
     if not sid:
         return None
     st = load_students(conn, year, student_id=sid).get(sid)
+    ro = conn.execute("SELECT * FROM students WHERE school_year = ? AND student_id = ?", (year, sid)).fetchone()
+    extra = {"status": ro["status"], "crisis": bool(ro["crisis"])} if ro else {"status": None, "crisis": False}
     if not st:
+        if ro:
+            return dict({"student_id": sid, "name": ro["name"], "grade": ro["grade"], "class": ro["class"], "records": {}}, **extra)
         r = conn.execute(
             "SELECT student_id, name, grade FROM monthly_records WHERE student_id = ? ORDER BY school_year DESC LIMIT 1", (sid,)
         ).fetchone()
         if not r:
             return None
-        return {"student_id": sid, "name": r["name"], "grade": r["grade"], "records": {}}
-    return {"student_id": sid, "name": st["name"], "grade": st["grade"], "class": st["class"],
-            "records": {str(m): v for m, v in st["records"].items()}}
+        return dict({"student_id": sid, "name": r["name"], "grade": r["grade"], "records": {}}, **extra)
+    return dict({"student_id": sid, "name": st["name"], "grade": st["grade"], "class": st["class"],
+                 "records": {str(m): v for m, v in st["records"].items()}}, **extra)
 
 
 # ================================================================ 제외
@@ -435,8 +445,9 @@ def bulk_add_exclusions(conn: sqlite3.Connection, year: int, body: Dict[str, Any
         raise AppError("학번을 하나 이상 입력해 주십시오")
     counts = body.get("counts") or {}
     note = str(body.get("note") or "").strip()
+    skip_empty = body.get("skip_empty", True)  # 학적 변동 등록처럼 앞으로 올 달까지 미리 막을 때만 False
     existing = load_exclusions(conn, year)
-    errors, unknown = [], []
+    errors, unknown, skipped, saved_ids = [], [], [], []
     for sid in ids:
         info = student_info(conn, year, sid)
         if not info or not info.get("records"):
@@ -445,10 +456,17 @@ def bulk_add_exclusions(conn: sqlite3.Connection, year: int, body: Dict[str, Any
         e = {"student_id": sid, "name": e.get("name") or (info["name"] if info else ""),
              "all_period": e.get("all_period"), "all_reason": e.get("all_reason") or "",
              "months": {k: list(v) for k, v in (e.get("months") or {}).items()}, "note": e.get("note") or ""}
+        recs = (info or {}).get("records") or {}
         if all_period:
             e["all_period"], e["all_reason"] = True, reason
         else:
-            for m in months:
+            mine = months
+            if skip_empty:
+                mine = [m for m in months if any((recs.get(str(m)) or {}).get(k, 0) for k in R.ITEMS)]
+                skipped += [{"student_id": sid, "name": e["name"], "month": m} for m in months if m not in mine]
+                if not mine:
+                    continue
+            for m in mine:
                 ent: Dict[str, Any] = {"reason": reason, "mode": mode}
                 if mode == "documented":
                     c = ((counts.get(sid) or {}).get(str(m)) or {})
@@ -459,11 +477,12 @@ def bulk_add_exclusions(conn: sqlite3.Connection, year: int, body: Dict[str, Any
                 e["months"][str(m)] = keep + [ent]
         try:
             save_exclusion(conn, year, e, sync=False)
+            saved_ids.append(sid)
         except AppError as err:
             errors.append({"student_id": sid, "name": e["name"], "message": err.message})
     if errors:
         raise AppError("%d명을 저장하지 못했습니다. 아무것도 저장하지 않았습니다" % len(errors), 400, {"errors": errors})
-    return {"saved": len(ids), "unknown": unknown, "new_alerts": sync_alerts(conn, year)}
+    return {"saved": len(saved_ids), "unknown": unknown, "skipped": skipped, "new_alerts": sync_alerts(conn, year)}
 
 
 def delete_exclusion(conn: sqlite3.Connection, ex_id: int) -> None:
@@ -742,6 +761,7 @@ def personal(conn: sqlite3.Connection, year: int, sid: str) -> Dict[str, Any]:
         "is_target": res["score"] >= int(rules["threshold"]), "next_stage": stage,
         "guidance": g, "exclusion": excl,
         "count_from": R.counting_start(g, rules),
+        "roster": RO.roster_map(conn, year).get(sid),
     }
 
 
@@ -850,15 +870,20 @@ def build_draft(conn: sqlite3.Connection, year: int, grade: int, student_ids: Li
     time_range = opts.get("time_range") if opts.get("time_range") is not None else defaults.get("time_range", "")
     include_year_total = bool(opts.get("include_year_total"))
     kinds = opts.get("kinds") or {}
+    roster = RO.roster_map(conn, year)
     studs = []
     for sid in student_ids:
         sid = normalize_id(sid)
         b = student_minutes_block(conn, year, grade, sid, basis_month, include_year_total)
-        b["kind"] = kinds.get(sid, "guidance")
+        b["kind"] = kinds.get(sid) or ("crisis" if (roster.get(sid) or {}).get("crisis") else "guidance")
         studs.append(b)
     cy = calendar_year(year, basis_month, start)
     last_day = calendar.monthrange(cy, basis_month)[1]
     dept = "%d학년부" % grade
+    if any(x["kind"] == "crisis" for x in studs) is False:
+        crisis_default = "해당 학생 없음"
+    else:
+        crisis_default = "생활지도 진행하지 않음"
     payload = {
         "school_year": year, "grade": grade, "seq": seq,
         "dept_name": dept, "start_month": start,
@@ -870,7 +895,7 @@ def build_draft(conn: sqlite3.Connection, year: int, grade: int, student_ids: Li
         "guidance_month": basis_month,
         "basis_date_text": "%d. %d. %d." % (cy, basis_month, last_day),
         "basis_phrase": "%d월 미인정 결석 누적합 기준 초과" % basis_month,
-        "crisis_text": "생활지도 진행하지 않음",
+        "crisis_text": crisis_default,
         "include_year_total": include_year_total,
         "students": studs,
     }

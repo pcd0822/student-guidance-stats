@@ -138,7 +138,7 @@ export default function SettingsPage() {
       <Card title={<span className="flex items-center gap-2"><FileText size={16} className="text-muted" /> 회의록 양식 (hwpx)</span>}>
         <div className="flex flex-wrap items-center justify-between gap-4">
           <p className="text-sm text-ink">
-            {tpl?.custom ? `바꿔 끼운 양식을 씁니다 (${tpl.updated_at})` : '기본 양식(2026 제4차 3학년부 학생선도 소위원회 회의록)을 씁니다'}
+            {!tpl ? '양식 정보를 불러오는 중' : tpl.custom ? `바꿔 끼운 양식을 씁니다 (${tpl.updated_at})` : '기본 양식(빈 학생선도 소위원회 회의록)을 씁니다'}
             <span className="block text-xs text-muted">새 양식은 기본 양식과 같은 구조(머리 표 + 월별 미인정 표 + 생활지도 표)여야 합니다. 올릴 때 시험 삼아 만들어 확인합니다.</span>
           </p>
           <div className="flex gap-2">

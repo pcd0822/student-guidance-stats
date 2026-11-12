@@ -5,7 +5,7 @@ import { api } from '@/lib/api'
 import { normalizeId, today } from '@/lib/format'
 import { schoolMonths } from '@/lib/months'
 import type { Guidance } from '@/lib/types'
-import { Card, Empty, Field, Modal, PageTitle, StageBadge } from '@/components/ui'
+import { Card, Empty, Field, Loading, Modal, PageTitle, SaveButton, StageBadge } from '@/components/ui'
 
 interface Form {
   id?: number
@@ -21,16 +21,25 @@ interface Form {
 export default function GuidancePage() {
   const { state, year, readonly, toast, confirm, bump, go, version } = useApp()
   const rules = state!.settings.rules
-  const [list, setList] = useState<Guidance[]>([])
+  const [list, setList] = useState<Guidance[] | null>(null)
   const [grade, setGrade] = useState<number | 0>(0)
   const [form, setForm] = useState<Form | null>(null)
+  const [formBase, setFormBase] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
+  const openForm = (f: Form) => {
+    setForm(f)
+    setFormBase(JSON.stringify(f))
+    setSavedAt(null)
+  }
+  const formDirty = !!form && (!form.id || JSON.stringify(form) !== formBase)
   const [paste, setPaste] = useState<{ kind: 'guidance' | 'exclusion'; text: string } | null>(null)
 
   useEffect(() => {
     api.get<Guidance[]>('/guidance', { school_year: year }).then(setList).catch((e) => toast(e.message, 'error'))
   }, [year, version, toast])
 
-  const shown = useMemo(() => (grade ? list.filter((g) => g.grade === grade) : list), [list, grade])
+  const shown = useMemo(() => (!list ? [] : grade ? list.filter((g) => g.grade === grade) : list), [list, grade])
   const byStudent = useMemo(() => {
     const m = new Map<string, Guidance[]>()
     for (const g of shown) m.set(g.student_id, [...(m.get(g.student_id) || []), g])
@@ -52,7 +61,7 @@ export default function GuidancePage() {
   const lookup = async (raw: string) => {
     const sid = normalizeId(raw)
     if (!sid || !form) return
-    const count = list.filter((g) => g.student_id === sid).length
+    const count = (list || []).filter((g) => g.student_id === sid).length
     let name = form.name
     try {
       name = (await api.get<{ name: string }>(`/students/${sid}`, { school_year: year })).name
@@ -64,15 +73,24 @@ export default function GuidancePage() {
 
   const save = async () => {
     if (!form) return
+    setSaving(true)
     try {
       const body = { ...form, school_year: year, step: form.step || undefined, month: form.month || null }
-      if (form.id) await api.put(`/guidance/${form.id}`, body)
-      else await api.post('/guidance', body)
-      toast('저장했습니다')
-      setForm(null)
+      if (form.id) {
+        await api.put(`/guidance/${form.id}`, body)
+        setFormBase(JSON.stringify(form))
+        setSavedAt(Date.now())
+        toast(`${form.student_id} ${form.name} 생활지도 기록을 고쳤습니다`)
+      } else {
+        await api.post('/guidance', body)
+        toast(`${form.student_id} ${form.name} 생활지도 기록을 추가했습니다`)
+        setForm(null)
+      }
       bump()
     } catch (e: any) {
       toast(e.message, 'error')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -116,7 +134,7 @@ export default function GuidancePage() {
               <button className="btn btn-secondary" onClick={() => setPaste({ kind: 'guidance', text: '' })}>
                 <ClipboardPaste size={16} /> 붙여넣기 가져오기
               </button>
-              <button className="btn btn-primary" onClick={() => setForm({ student_id: '', name: '', step: '', month: '', date: today(), measure: '', note: '' })}>
+              <button className="btn btn-primary" onClick={() => openForm({ student_id: '', name: '', step: '', month: '', date: today(), measure: '', note: '' })}>
                 <Plus size={16} /> 기록 추가
               </button>
             </div>
@@ -137,7 +155,9 @@ export default function GuidancePage() {
         }
         pad={false}
       >
-        {shown.length === 0 ? (
+        {!list ? (
+          <Loading />
+        ) : shown.length === 0 ? (
           <Empty icon={History} title="생활지도 기록이 없습니다" sub="기존 시트의 4️⃣(S:X) 영역을 복사해 「붙여넣기 가져오기」로 옮겨 올 수 있습니다." />
         ) : (
           <table className="tbl">
@@ -190,7 +210,7 @@ export default function GuidancePage() {
                           <button
                             className="btn btn-ghost btn-icon"
                             aria-label="고치기"
-                            onClick={() => setForm({ id: g.id, student_id: g.student_id, name: g.name, step: g.step, month: g.month ?? '', date: g.date || '', measure: g.measure || '', note: g.note || '' })}
+                            onClick={() => openForm({ id: g.id, student_id: g.student_id, name: g.name, step: g.step, month: g.month ?? '', date: g.date || '', measure: g.measure || '', note: g.note || '' })}
                           >
                             <Pencil size={16} />
                           </button>
@@ -217,9 +237,7 @@ export default function GuidancePage() {
             <button className="btn btn-secondary" onClick={() => setForm(null)}>
               취소
             </button>
-            <button className="btn btn-primary" onClick={save} disabled={!form?.student_id || !form?.month}>
-              저장
-            </button>
+            <SaveButton dirty={formDirty} saving={saving} savedAt={savedAt} onClick={save} disabled={!form?.student_id || !form?.month} />
           </>
         }
       >

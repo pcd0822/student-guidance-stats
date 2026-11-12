@@ -21,6 +21,8 @@ export default function Wizard({ embedded = false, onClose }: { embedded?: boole
   const [missing, setMissing] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const r = s.rules
+  // 설정에서 다시 연 경우: 바뀐 것이 없으면 저장할 필요가 없다
+  const changed = !embedded || JSON.stringify(s) !== JSON.stringify(state!.settings)
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -63,7 +65,7 @@ export default function Wizard({ embedded = false, onClose }: { embedded?: boole
     setSaving(true)
     try {
       await api.put('/settings', { ...s, setup_done: true })
-      toast('생활규정 설정을 저장했습니다')
+      toast('생활규정 설정을 저장했습니다. 대시보드·명단이 새 규정으로 다시 계산됩니다')
       bump()
       onClose?.()
     } catch (e: any) {
@@ -306,8 +308,8 @@ export default function Wizard({ embedded = false, onClose }: { embedded?: boole
               다음 <ArrowRight size={16} />
             </button>
           ) : (
-            <button className="btn btn-primary" onClick={save} disabled={saving}>
-              <Check size={16} /> 이 규정으로 저장
+            <button className="btn btn-primary" onClick={save} disabled={saving || !changed} title={changed ? undefined : '바뀐 내용이 없습니다'}>
+              <Check size={16} /> {changed ? '이 규정으로 저장' : '바뀐 내용 없음'}
             </button>
           )}
         </div>

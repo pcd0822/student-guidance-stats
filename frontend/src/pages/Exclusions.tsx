@@ -6,7 +6,7 @@ import { cn, normalizeId } from '@/lib/format'
 import { schoolMonths } from '@/lib/months'
 import type { Alert, Counts, ExEntry, Exclusion, Item } from '@/lib/types'
 import { ITEM_LABEL, ITEMS } from '@/lib/types'
-import { Card, Empty, Field, PageTitle, Spinner, Toggle } from '@/components/ui'
+import { Card, Empty, Field, Loading, PageTitle, SaveButton, Toggle } from '@/components/ui'
 import ExclusionBulk from './ExclusionBulk'
 
 const ZERO: Counts = { abs: 0, late: 0, leave: 0, result: 0 }
@@ -24,6 +24,8 @@ export default function Exclusions() {
   const [showAck, setShowAck] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
   const [focusMonth, setFocusMonth] = useState<number | null>(null)
+  const [jump, setJump] = useState(0)
+  const [focusItem, setFocusItem] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [bulk, setBulk] = useState(false)
 
@@ -36,6 +38,19 @@ export default function Exclusions() {
     load().catch((e) => toast(e.message, 'error'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, version])
+
+  // 알림의 「서류 횟수 수정」을 누르면 그 학생 칸을 펼치고 그 달 입력 칸으로 바로 옮겨 간다
+  useEffect(() => {
+    if (!jump || !open) return
+    const t = setTimeout(() => {
+      const el = document.getElementById(`ex-month-${open}-${focusMonth}`) || document.getElementById(`ex-student-${open}`)
+      el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      const input = ((focusItem && el?.querySelector(`input[data-item="${focusItem}"]`)) || el?.querySelector('input')) as HTMLInputElement | null
+      input?.focus({ preventScroll: true })
+    }, 60)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump])
 
   const openAlerts = alerts.filter((a) => a.status === 'open')
   const shown = showAck ? alerts : openAlerts
@@ -121,7 +136,9 @@ export default function Exclusions() {
         }
         pad={false}
       >
-        {shown.length === 0 ? (
+        {!list ? (
+          <Loading />
+        ) : shown.length === 0 ? (
           <p className="px-5 py-6 text-center text-sm text-muted">서류에 없는 내역이 없습니다.</p>
         ) : (
           <ul className="max-h-[360px] divide-y divide-line overflow-auto">
@@ -145,7 +162,10 @@ export default function Exclusions() {
                       onClick={() => {
                         setOpen(a.student_id)
                         setFocusMonth(a.month)
+                        setFocusItem(a.item)
                         setAdding(false)
+                        setBulk(false)
+                        setJump((n) => n + 1)
                       }}
                     >
                       서류 횟수 수정
@@ -196,9 +216,7 @@ export default function Exclusions() {
 
       <Card title={`제외 명단 (${list?.length ?? 0}명)`} pad={false}>
         {!list ? (
-          <div className="grid place-items-center py-8">
-            <Spinner />
-          </div>
+          <Loading />
         ) : list.length === 0 ? (
           <Empty icon={ShieldMinus} title="제외 등록이 없습니다" sub="자퇴·숙려제·학원 수강처럼 서류로 확인된 미인정을 학생 × 달 단위로 뺍니다." />
         ) : (
@@ -206,7 +224,7 @@ export default function Exclusions() {
             {list.map((e) => {
               const isOpen = open === e.student_id
               return (
-                <li key={e.student_id}>
+                <li key={e.student_id} id={`ex-student-${e.student_id}`} className="scroll-mt-4">
                   <button className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-[color-mix(in_srgb,var(--raised)_50%,transparent)]" onClick={() => setOpen(isOpen ? null : e.student_id)}>
                     {isOpen ? <ChevronDown size={16} className="text-muted" /> : <ChevronRight size={16} className="text-muted" />}
                     <span className="num w-14 text-xs text-muted">{e.student_id}</span>
@@ -219,7 +237,7 @@ export default function Exclusions() {
                   {isOpen && (
                     <div className="border-t border-line bg-paper px-5 py-5">
                       <ExclusionEditor
-                        key={e.student_id + JSON.stringify(e.months)}
+                        key={e.student_id}
                         initial={e}
                         focusMonth={focusMonth}
                         onCancel={() => setOpen(null)}
@@ -282,11 +300,21 @@ function ExclusionEditor({
   const [e, setE] = useState<Exclusion>(() => JSON.parse(JSON.stringify(initial)))
   const [records, setRecords] = useState<Record<string, Counts>>(initial.records || {})
   const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
   const [lookupMsg, setLookupMsg] = useState('')
+  const [base, setBase] = useState(() => JSON.stringify(initial))
+  const dirty = isNew || JSON.stringify(e) !== base
 
+  // 다른 곳(여러 명 추가 등)에서 이 학생 제외가 바뀌었고, 여기서 고친 게 없으면 새 내용으로 맞춘다
+  const initialKey = JSON.stringify(initial)
   useEffect(() => {
-    if (focusMonth) document.getElementById(`ex-month-${focusMonth}`)?.scrollIntoView({ block: 'center' })
-  }, [focusMonth])
+    if (!dirty && initialKey !== base) {
+      setE(JSON.parse(initialKey))
+      setRecords(initial.records || {})
+      setBase(initialKey)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey])
 
   const lookup = async (raw: string) => {
     const sid = normalizeId(raw)
@@ -330,7 +358,9 @@ function ExclusionEditor({
     setSaving(true)
     try {
       const r = await api.put<{ new_alerts: number }>('/exclusions', { ...e, school_year: year })
-      toast(`저장했습니다${r.new_alerts ? ` · 서류에 없는 내역 ${r.new_alerts}건이 새로 생겼습니다` : ''}`, r.new_alerts ? 'warn' : 'ok')
+      toast(`${e.student_id} ${e.name} 제외 내용을 저장했습니다${r.new_alerts ? ` · 서류에 없는 내역 ${r.new_alerts}건이 새로 생겼습니다` : ''}`, r.new_alerts ? 'warn' : 'ok')
+      setBase(JSON.stringify(e))
+      setSavedAt(Date.now())
       onSaved(e.student_id)
     } catch (err: any) {
       toast(err.message, 'error')
@@ -381,17 +411,18 @@ function ExclusionEditor({
                 const k = String(m)
                 const on = !!e.months[k]
                 const rec = records[k]
+                const hasU = !!rec && ITEMS.some((i) => rec[i] > 0)
                 return (
                   <button
                     key={m}
                     type="button"
                     aria-pressed={on}
-                    disabled={readonly}
+                    disabled={readonly || (!on && !hasU)}
                     onClick={() => setMonth(k, on ? null : [{ reason: '', mode: 'all' }])}
-                    title={rec ? `기록: ${ITEMS.map((i) => `${ITEM_LABEL[i]} ${rec[i]}`).join(' · ')}` : `${m}월 자료 없음`}
+                    title={!rec ? `${m}월 자료 없음` : !hasU ? `${m}월 미인정 없음` : `기록: ${ITEMS.map((i) => `${ITEM_LABEL[i]} ${rec[i]}`).join(' · ')}`}
                     className={cn(
                       'h-7 min-w-[44px] rounded-md border px-2 text-xs font-medium num transition-colors duration-150',
-                      on ? 'border-accent bg-[color-mix(in_srgb,var(--accent)_8%,#fff)] text-accent-ink' : rec ? 'border-line bg-surface text-ink hover:bg-raised' : 'border-line bg-paper text-faint'
+                      on ? 'border-accent bg-[color-mix(in_srgb,var(--accent)_8%,#fff)] text-accent-ink' : hasU ? 'border-line bg-surface text-ink hover:bg-raised' : 'cursor-not-allowed border-line bg-paper text-faint'
                     )}
                   >
                     {m}월
@@ -404,7 +435,7 @@ function ExclusionEditor({
             .map(Number)
             .sort((a, b) => schoolMonths(start).indexOf(a) - schoolMonths(start).indexOf(b))
             .map((m) => (
-              <MonthPanel key={m} m={m} ents={e.months[String(m)]} rec={records[String(m)]} over={over[String(m)] || {}} onChange={(ents) => setMonth(String(m), ents)} focused={focusMonth === m} />
+              <MonthPanel key={m} sid={e.student_id} m={m} ents={e.months[String(m)]} rec={records[String(m)]} over={over[String(m)] || {}} onChange={(ents) => setMonth(String(m), ents)} focused={focusMonth === m} />
             ))}
         </>
       )}
@@ -423,13 +454,13 @@ function ExclusionEditor({
           <button className="btn btn-secondary" onClick={onCancel}>
             닫기
           </button>
-          <button
-            className="btn btn-primary"
-            disabled={saving || readonly || hasOver || missingReason || !e.student_id || (e.all_period ? !e.all_reason.trim() : !Object.keys(e.months).length)}
+          <SaveButton
+            dirty={dirty}
+            saving={saving}
+            savedAt={savedAt}
             onClick={save}
-          >
-            {saving && <Spinner className="text-white" />} 저장
-          </button>
+            disabled={readonly || hasOver || missingReason || !e.student_id || (e.all_period ? !e.all_reason.trim() : !Object.keys(e.months).length)}
+          />
         </div>
       </div>
     </div>
@@ -437,6 +468,7 @@ function ExclusionEditor({
 }
 
 function MonthPanel({
+  sid,
   m,
   ents,
   rec,
@@ -444,6 +476,7 @@ function MonthPanel({
   onChange,
   focused,
 }: {
+  sid: string
   m: number
   ents: ExEntry[]
   rec?: Counts
@@ -453,7 +486,7 @@ function MonthPanel({
 }) {
   const set = (i: number, patch: Partial<ExEntry>) => onChange(ents.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   return (
-    <div id={`ex-month-${m}`} className={cn('rounded-xl border bg-surface p-4', focused ? 'border-accent' : 'border-line')}>
+    <div id={`ex-month-${sid}-${m}`} className={cn('rounded-xl border bg-surface p-4', focused ? 'border-accent' : 'border-line')}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-semibold text-ink-strong">{m}월</p>
         <p className="num text-xs text-muted">
@@ -487,6 +520,7 @@ function MonthPanel({
                     <input
                       type="number"
                       min={0}
+                      data-item={k}
                       className="field w-28 num"
                       aria-invalid={over[k] !== undefined}
                       value={x.counts?.[k] ?? 0}

@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
-import { Loader2, X } from 'lucide-react'
-import { useEffect, type ReactNode } from 'react'
+import { Check, Loader2, X } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { cn } from '@/lib/format'
 import type { Item, Stage } from '@/lib/types'
 import { ITEM_COLOR, ITEM_LABEL } from '@/lib/types'
@@ -245,5 +245,95 @@ export function Stat({ label, value, tone }: { label: string; value: ReactNode; 
       <span className="label">{label}</span>
       <span className={cn('text-2xl font-medium num', tone === 'absent' ? 'text-absent' : tone === 'late' ? 'text-late-ink' : 'text-ink-strong')}>{value}</span>
     </div>
+  )
+}
+
+/* ---------------------------------------------------------------- 불러오는 중 */
+
+/** 자료를 불러오는 동안 보이는 스피너. 빈 화면이나 「없습니다」가 먼저 깜빡이지 않게 한다 */
+export function Loading({ label = '불러오는 중', className = '' }: { label?: string; className?: string }) {
+  return (
+    <div role="status" aria-live="polite" className={cn('flex items-center justify-center gap-2 py-10 text-sm text-muted', className)}>
+      <Loader2 size={20} className="animate-spin text-accent" />
+      {label}
+    </div>
+  )
+}
+
+/* ---------------------------------------------------------------- 저장 버튼 */
+
+/**
+ * 고친 것이 없으면 「저장됨」으로 잠기고, 고치면 「저장」, 저장 직후에는 「✓ 저장했습니다」를 잠시 보여 준다.
+ * savedAt 은 저장에 성공한 시각(Date.now())
+ */
+export function SaveButton({
+  dirty,
+  saving,
+  savedAt,
+  onClick,
+  disabled,
+  label = '저장',
+  className = 'btn btn-primary',
+}: {
+  dirty: boolean
+  saving: boolean
+  savedAt: number | null
+  onClick: () => void
+  disabled?: boolean
+  label?: string
+  className?: string
+}) {
+  const [, tick] = useState(0)
+  const justSaved = !dirty && savedAt !== null && Date.now() - savedAt < 4000
+  useEffect(() => {
+    if (!justSaved) return
+    const t = setTimeout(() => tick((n) => n + 1), 4000 - (Date.now() - (savedAt || 0)))
+    return () => clearTimeout(t)
+  }, [justSaved, savedAt])
+  if (saving)
+    return (
+      <button className={className} disabled>
+        <Loader2 size={16} className="animate-spin" /> 저장 중
+      </button>
+    )
+  if (justSaved)
+    return (
+      <button className="btn btn-secondary" disabled style={{ opacity: 1, color: 'var(--accent-ink)', borderColor: 'var(--accent)' }} aria-live="polite">
+        <Check size={16} /> 저장했습니다
+      </button>
+    )
+  if (!dirty)
+    return (
+      <button className="btn btn-secondary" disabled title="고친 내용이 없습니다">
+        저장됨
+      </button>
+    )
+  return (
+    <button className={className} onClick={onClick} disabled={disabled}>
+      {label}
+    </button>
+  )
+}
+
+/* ---------------------------------------------------------------- 학적 배지 */
+
+export function StatusBadge({ status, crisis }: { status?: string | null; crisis?: boolean }) {
+  return (
+    <>
+      {status && status !== '재학' && (
+        <span className="ml-2 inline-flex h-5 items-center rounded px-1.5 align-middle text-xs font-medium text-ink" style={{ background: 'var(--raised)' }} title={`학적: ${status}`}>
+          {status}
+        </span>
+      )}
+      {crisis && (
+        <span
+          className="ml-1 inline-flex h-5 items-center rounded px-1.5 align-middle text-xs font-medium"
+          style={{ background: 'color-mix(in srgb, var(--early) 12%, #fff)', color: 'var(--early)' }}
+          title="위기관리학생"
+        >
+          위기관리
+        </span>
+      )}
+    </>
   )
 }

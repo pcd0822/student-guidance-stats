@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Download, FilePlus2, FileText, RefreshCw, Save, Trash2, Undo2, X } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Download, FilePlus2, FileText, RefreshCw, Trash2, Undo2, X } from 'lucide-react'
 import { useApp } from '@/context'
 import { api, download } from '@/lib/api'
 import { normalizeId, today } from '@/lib/format'
 import type { Dashboard, Meeting, MinutesPayload, MinutesStudent, TargetRow } from '@/lib/types'
-import { Card, Empty, Field, Modal, PageTitle, Spinner, StageBadge, Toggle } from '@/components/ui'
+import { Card, Empty, Field, Loading, Modal, PageTitle, SaveButton, Spinner, StageBadge, Toggle } from '@/components/ui'
 
 const WEEK = '일월화수목금토'
 
@@ -49,7 +49,7 @@ function autoTexts(p: Draft): Draft {
 
 export default function MinutesPage() {
   const { params, year, readonly, toast, confirm, bump, version, go } = useApp()
-  const [list, setList] = useState<Meeting[]>([])
+  const [list, setList] = useState<Meeting[] | null>(null)
   const [draft, setDraft] = useState<Draft | null>(null)
   const [meeting, setMeeting] = useState<Meeting | null>(null)
   const [picker, setPicker] = useState(false)
@@ -144,7 +144,9 @@ export default function MinutesPage() {
         }
       />
       <Card title={`${year}학년도 회의록`} pad={false}>
-        {list.length === 0 ? (
+        {!list ? (
+          <Loading />
+        ) : list.length === 0 ? (
           <Empty icon={FileText} title="회의록이 없습니다" sub="대시보드 대상자 명단에서 학생을 체크해 「회의록 만들기」를 누르거나, 위의 「새 회의록」으로 시작하십시오." />
         ) : (
           <table className="tbl">
@@ -337,6 +339,7 @@ function Editor({
   const p = draft
   const avail = state!.months_by_grade[String(p.grade)] || []
   const [busy, setBusy] = useState(false)
+  const [savedAt, setSavedAt] = useState<number | null>(null)
   const [addId, setAddId] = useState('')
   const [dirty, setDirty] = useState(!meeting)
 
@@ -393,6 +396,7 @@ function Editor({
       const m = meeting ? await api.put<Meeting>(`/meetings/${meeting.id}`, p) : await api.post<Meeting>('/meetings', p)
       setMeeting(m)
       setDirty(false)
+      setSavedAt(Date.now())
       bump()
       return m
     } catch (e: any) {
@@ -475,9 +479,7 @@ function Editor({
               <ArrowLeft size={16} /> 목록
             </button>
             {!locked && (
-              <button className="btn btn-secondary" onClick={save} disabled={busy}>
-                <Save size={16} /> 초안 저장
-              </button>
+              <SaveButton dirty={dirty} saving={busy} savedAt={savedAt} onClick={save} label="초안 저장" className="btn btn-secondary" />
             )}
             <button className="btn btn-secondary" onClick={downloadHwpx} disabled={busy || (readonly && !meeting)}>
               <Download size={16} /> hwpx 내려받기

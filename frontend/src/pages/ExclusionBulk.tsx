@@ -72,6 +72,12 @@ export default function ExclusionBulk({ onClose, onSaved }: { onClose: () => voi
   }, [text, year])
 
   const sortedMonths = useMemo(() => schoolMonths(start).filter((m) => months.includes(m)), [months, start])
+  // 그 달에 미인정이 있는지(학생별) — 없는 달은 제외할 것이 없다
+  const hasU = (s: Stu, m: number) => {
+    const rec = s.records[String(m)]
+    return !!rec && ITEMS.some((k) => rec[k] > 0)
+  }
+  const monthUsable = (m: number) => studs.some((s) => hasU(s, m))
   const getC = (sid: string, m: number) => counts[sid]?.[String(m)] || ZERO
   const setC = (sid: string, m: number, k: Item, v: number) =>
     setCounts((c) => ({ ...c, [sid]: { ...(c[sid] || {}), [String(m)]: { ...(c[sid]?.[String(m)] || ZERO), [k]: Math.max(0, v || 0) } } }))
@@ -89,7 +95,7 @@ export default function ExclusionBulk({ onClose, onSaved }: { onClose: () => voi
     setSaving(true)
     setErrors([])
     try {
-      const r = await api.post<{ saved: number; unknown: string[]; new_alerts: number }>('/exclusions/bulk', {
+      const r = await api.post<{ saved: number; unknown: string[]; skipped: { student_id: string; name: string; month: number }[]; new_alerts: number }>('/exclusions/bulk', {
         school_year: year,
         student_ids: studs.map((s) => s.student_id),
         reason: reason.trim(),
@@ -100,6 +106,8 @@ export default function ExclusionBulk({ onClose, onSaved }: { onClose: () => voi
         counts: mode === 'documented' ? counts : undefined,
       })
       toast(`${r.saved}명에게 제외를 더했습니다${r.new_alerts ? ` · 서류에 없는 내역 ${r.new_alerts}건` : ''}`, r.new_alerts ? 'warn' : 'ok')
+      if (r.skipped?.length)
+        toast(`미인정이 없어 건너뛴 칸 ${r.skipped.length}개: ${r.skipped.slice(0, 4).map((x) => `${x.name || x.student_id} ${x.month}월`).join(', ')}${r.skipped.length > 4 ? ' …' : ''}`, 'warn')
       onSaved()
     } catch (e) {
       const err = e as ApiError
@@ -177,15 +185,23 @@ export default function ExclusionBulk({ onClose, onSaved }: { onClose: () => voi
           <div className="flex flex-wrap gap-2">
             {schoolMonths(start).map((m) => {
               const on = months.includes(m)
+              const usable = monthUsable(m)
+              const n = studs.filter((s) => hasU(s, m)).length
               return (
                 <button
                   key={m}
                   type="button"
                   aria-pressed={on}
+                  disabled={!on && !usable}
+                  title={studs.length === 0 ? '먼저 학번을 넣으십시오' : usable ? `${m}월 미인정이 있는 학생 ${n}명` : `${m}월에 미인정이 있는 학생이 없습니다`}
                   onClick={() => setMonths(on ? months.filter((x) => x !== m) : [...months, m])}
                   className={cn(
                     'h-7 min-w-[44px] rounded-md border px-2 text-xs font-medium num transition-colors duration-150',
-                    on ? 'border-accent bg-[color-mix(in_srgb,var(--accent)_8%,#fff)] text-accent-ink' : 'border-line bg-surface text-ink hover:bg-raised'
+                    on
+                      ? 'border-accent bg-[color-mix(in_srgb,var(--accent)_8%,#fff)] text-accent-ink'
+                      : usable
+                        ? 'border-line bg-surface text-ink hover:bg-raised'
+                        : 'cursor-not-allowed border-line bg-paper text-faint'
                   )}
                 >
                   {m}월
@@ -211,7 +227,7 @@ export default function ExclusionBulk({ onClose, onSaved }: { onClose: () => voi
             </thead>
             <tbody>
               {studs.flatMap((s) =>
-                sortedMonths.map((m, mi) => {
+                sortedMonths.filter((m) => hasU(s, m)).map((m, mi) => {
                   const rec = s.records[String(m)]
                   return (
                     <tr key={s.student_id + m}>
@@ -263,7 +279,7 @@ export default function ExclusionBulk({ onClose, onSaved }: { onClose: () => voi
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted">
-          이미 제외가 등록된 학생은 기존 내용에 더합니다. 같은 달에 같은 사유가 있으면 새 값으로 바꿉니다.
+          이미 제외가 등록된 학생은 기존 내용에 더합니다. 같은 달에 같은 사유가 있으면 새 값으로 바꿉니다. 그 달 미인정이 없는 학생은 건너뜁니다.
           {notFound.length > 0 && <span className="text-late-ink"> 자료에 없는 학번 {notFound.length}개도 등록됩니다.</span>}
         </p>
         <div className="flex items-center gap-2">

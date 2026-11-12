@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, db, minutes, paths
+from . import roster as RO
 from . import rules as R
 from . import service as S
 from .parse_neis import ParseError, normalize_id, parse_file, summarize
@@ -34,6 +35,11 @@ def _app_error(_: Request, e: S.AppError):
 
 @app.exception_handler(ParseError)
 def _parse_error(_: Request, e: ParseError):
+    return JSONResponse({"detail": str(e)}, status_code=400)
+
+
+@app.exception_handler(RO.RosterError)
+def _roster_error(_: Request, e: RO.RosterError):
     return JSONResponse({"detail": str(e)}, status_code=400)
 
 
@@ -264,6 +270,40 @@ def student(sid: str, school_year: Optional[int] = None):
 def personal(sid: str, school_year: Optional[int] = None):
     with db.session() as conn:
         return S.personal(conn, _year(conn, school_year), sid)
+
+
+# ================================================================ 학생 명단·학적
+
+@app.get("/api/roster")
+def roster_list(school_year: Optional[int] = None, grade: Optional[int] = None):
+    with db.session() as conn:
+        return {"students": RO.list_roster(conn, _year(conn, school_year), grade), "statuses": RO.STATUSES,
+                "leaving": sorted(RO.LEAVING)}
+
+
+@app.post("/api/roster")
+def roster_add(body: Dict[str, Any] = Body(...)):
+    with db.session() as conn:
+        return RO.save_student(conn, _year(conn, body.get("school_year")), body, create=True)
+
+
+@app.put("/api/roster/{sid}")
+def roster_update(sid: str, body: Dict[str, Any] = Body(...)):
+    with db.session() as conn:
+        return RO.save_student(conn, _year(conn, body.get("school_year")), dict(body, student_id=sid))
+
+
+@app.delete("/api/roster/{sid}")
+def roster_delete(sid: str, school_year: Optional[int] = None):
+    with db.session() as conn:
+        RO.delete_student(conn, _year(conn, school_year), sid)
+        return {"ok": True}
+
+
+@app.post("/api/roster/import")
+def roster_import(body: Dict[str, Any] = Body(...)):
+    with db.session() as conn:
+        return RO.import_paste(conn, _year(conn, body.get("school_year")), body.get("text") or "")
 
 
 # ================================================================ 제외·알림
