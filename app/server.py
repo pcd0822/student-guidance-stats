@@ -8,6 +8,7 @@ import sqlite3
 import threading
 import time
 import zipfile
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -17,12 +18,24 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__, db, minutes, paths
+from . import report as RP
 from . import roster as RO
 from . import rules as R
 from . import service as S
+from . import share as SH
 from .parse_neis import ParseError, normalize_id, parse_file, summarize
 
-app = FastAPI(title="생활지도·학생선도 통계", docs_url=None, redoc_url=None, openapi_url=None)
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    try:
+        SH.autostart()  # 공유가 켜져 있었으면 교내망 공유 서버도 다시 연다
+    except Exception:  # 공유가 안 열려도 앱은 켜져야 한다
+        pass
+    yield
+    SH.shutdown()
+
+
+app = FastAPI(title="생활지도·학생선도 통계", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 
 _previews: Dict[str, Dict[str, Any]] = {}
 _previews_lock = threading.Lock()
@@ -253,6 +266,45 @@ def dashboard(grade: int, lookup_months: str = "", target_months: Optional[str] 
         y = _year(conn, school_year)
         tm = _months(target_months) if target_months is not None else S.data_months(conn, y, grade)
         return S.dashboard(conn, y, grade, _months(lookup_months), tm, bool(apply))
+
+
+# ================================================================ 미인정 현황 공유·내려받기
+
+@app.get("/api/report")
+def report_data(school_year: Optional[int] = None):
+    with db.session() as conn:
+        return RP.build(conn, _year(conn, school_year))
+
+
+@app.get("/api/report.xlsx")
+def report_xlsx(scope: str = "all", grade: Optional[int] = None, cls: Optional[int] = None, sid: Optional[str] = None,
+                months: Optional[str] = None, school_year: Optional[int] = None):
+    with db.session() as conn:
+        d = RP.build(conn, _year(conn, school_year))
+    body = RP.to_xlsx(d, scope, grade, cls, sid, _months(months))
+    return _download(body, RP.title_of(d, scope, grade, cls, sid) + ".xlsx",
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.get("/api/share")
+def share_status():
+    with db.session() as conn:
+        return SH.status(conn)
+
+
+@app.post("/api/share")
+def share_action(body: Dict[str, Any] = Body(...)):
+    with db.session() as conn:
+        return SH.apply(conn, str(body.get("action") or ""))
+
+
+@app.get("/api/share/file")
+def share_file(school_year: Optional[int] = None):
+    with db.session() as conn:
+        d = RP.build(conn, _year(conn, school_year))
+    stamp = d["generated_at"].replace("-", "").replace(":", "").replace(" ", "_")
+    return _download(RP.view_html("file", d).encode("utf-8"), "%d학년도_미인정출결_공유_%s.html" % (d["school_year"], stamp),
+                     "text/html; charset=utf-8")
 
 
 # ================================================================ 학생

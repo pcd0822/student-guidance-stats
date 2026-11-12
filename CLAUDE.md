@@ -43,6 +43,7 @@ Claude Code 가 이 저장소에서 일할 때 먼저 읽는 문서입니다. �
   | 1.0.2 | 여러 달 파일을 한 번에 올림, 제외 일괄 추가 |
   | 1.0.3 | pywebview recursion 문제를 고침 |
   | 1.0.4 | 학생 관리(학적), 제외 처리 개선, 저장 표시·스피너 |
+  | 1.0.5 | 미인정 현황 공유(교내망 링크·공유 파일), xlsx·PDF 내려받기 |
 
 ## 구조
 
@@ -56,9 +57,12 @@ app/alerts.py        「서류에 없는 내역」 알림
 app/roster.py        학생 관리(학적 상태·위기관리·비고, 명단 동기화·붙여넣기)
 app/parse_neis.py    나이스 원본 파서(xlsx / xls / HTML 위장 xls)
 app/minutes.py       hwpx 생성(양식 section0.xml 복사·수정)
+app/report.py        미인정 출결 현황표 자료(공유 화면·공유 파일·xlsx 가 함께 씀)
+app/share.py         교내망 링크 공유 서버(본 서버와 따로, 읽기 전용 주소 3개만)
+app/templates/share_view.html  담임용 공유 화면(바닐라 JS, 외부 주소 없음, live/file 두 방식)
 app/db.py            SQLite 스키마(data/app.db)
 frontend/src/        React 18 + Vite 5 + TS + Tailwind 3 (pages/, components/ui.tsx, lib/api.ts)
-tests/               pytest(55개). 샘플 xlsx 가 없으면 일부는 건너뜀
+tests/               pytest(59개). 샘플 xlsx 가 없으면 일부는 건너뜀
 scripts/             bootstrap.ps1(윈도우 실행 준비), install.ps1(설치·업데이트·바로 가기)
 installer/           install.bat + README.txt → 릴리스 zip
 start.sh / start.command / start.bat   실행 스크립트
@@ -102,10 +106,15 @@ cd frontend && npm run build                 # app/static 에 빌드(커밋 대�
   - 표2 하나에는 학생 3명까지만 둡니다.
   - 한글 프로그램으로 직접 열어 보는 확인은 사용자가 합니다.
 - 큰 경로에 `rm -rf` 를 쓰면 안전 검사에 막힙니다. 임시 작업은 새 폴더에서 합니다.
+- **공유 서버 시험**은 `GS_SHARE_HOST=127.0.0.1` 로 돌립니다(`tests/test_share.py`). 0.0.0.0 으로 열면 개발 PC 에 윈도우 방화벽 창이 뜹니다.
+- `components/ui.tsx` 의 `Field` 는 `<label>` 이라 안에 버튼(칩)을 넣으면 제목 글자를 눌렀을 때 첫 버튼이 눌립니다. 칩 묶음은 div 로 감쌉니다(`ReportShare.tsx` 의 `Row`).
+- **DB 는 마이그레이션이 없습니다**(`CREATE TABLE IF NOT EXISTS` 만). 새 표는 괜찮지만 기존 표에 열을 더하면 이미 쓰는 학교 PC 에서 업데이트 뒤 오류가 납니다. 열을 더할 때는 `ALTER TABLE … ADD COLUMN` 을 함께 넣습니다. 설정값은 `settings` 표의 키로 두면 안전합니다(공유 설정 `share` 처럼).
 
 ## 이미 확정된 결정
 
 - 회의록을 「확정」하면 **기준 월**까지 누적을 초기화합니다. 회의 날짜의 달이 아닙니다.
+- 미인정 현황 공유(v1.0.5)는 **원자료 + 제외된 달 회색 표시**입니다. 「제외 반영 환산」 은 제외만 반영하고 생활지도 초기화는 반영하지 않습니다.
+- 공유 방식은 두 가지를 고를 수 있습니다: ① 교내망 링크(`http://<IP>:8790/s/<암호키>`, 담당자 앱이 켜져 있을 때만, 새 주소 만들기로 옛 주소 차단) ② 공유 파일(자료를 담은 HTML 한 파일). 클라우드 공유는 개인정보 원칙상 하지 않습니다.
 - 위기관리학생은 회의록 표2(위반 사항)에는 남기고, 표3(지도 대상)에서는 뺍니다.
 - 여러 달을 한 기간으로 받은 나이스 파일(예: 3/1~10/31)은 달별로 나눌 수 없어 받지 않습니다. 달마다 한 파일씩 여러 개를 올립니다.
 - 제외 처리의 달 칩은 그 학생에게 미인정이 있는 달만 고를 수 있습니다.

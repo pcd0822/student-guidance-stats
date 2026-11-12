@@ -1,11 +1,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, ArrowDownUp, FileText, LayoutDashboard, Search } from 'lucide-react'
+import { AlertTriangle, ArrowDownUp, Download, FileText, LayoutDashboard, Link2, Search } from 'lucide-react'
 import { useApp } from '@/context'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/format'
 import { monthsLabel, sortMonths } from '@/lib/months'
 import type { Dashboard as D, Item, LookupRow, MonthRes, TargetRow } from '@/lib/types'
 import { ITEMS } from '@/lib/types'
+import { DownloadModal, ShareModal } from '@/components/ReportShare'
 import { Card, CountCell, Empty, Legend, Loading, MonthChips, PageTitle, Spinner, StageBadge, Stat, StatusBadge, Toggle } from '@/components/ui'
 
 // 화면을 옮겨 다녀도 고른 달을 기억한다(이번 실행 동안만)
@@ -31,6 +32,8 @@ export default function Dashboard() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<{ k: SortKey; desc: boolean }>({ k: 'student_id', desc: false })
   const [picked, setPicked] = useState<string[]>([])
+  const [shareOpen, setShareOpen] = useState(false)
+  const [dlOpen, setDlOpen] = useState(false)
 
   // 학년·학년도가 바뀌면 고른 달 다시 정하기
   useEffect(() => {
@@ -86,12 +89,20 @@ export default function Dashboard() {
 
   return (
     <div className="flex flex-col gap-6">
+      <ShareModal open={shareOpen} onClose={() => setShareOpen(false)} />
+      <DownloadModal open={dlOpen} onClose={() => setDlOpen(false)} defaultGrade={grade} />
       <PageTitle
         icon={LayoutDashboard}
         title="대시보드"
         sub={`${year}학년도 · 월별 미인정 내역과 생활지도 대상자를 봅니다`}
         right={
           <div className="flex items-center gap-3">
+            <button className="btn btn-secondary" onClick={() => setShareOpen(true)}>
+              <Link2 size={16} /> 링크 공유
+            </button>
+            <button className="btn btn-secondary" onClick={() => setDlOpen(true)}>
+              <Download size={16} /> 다운로드
+            </button>
             {data && data.summary.alerts > 0 && (
               <button
                 className="btn btn-secondary"

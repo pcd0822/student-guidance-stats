@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>미인정 출결 현황</title>
+<style>
+:root{
+  --accent:#3f7d6e;--accent-ink:#285e52;--absent:#c2410c;--late:#d4a017;--late-ink:#8a5a0b;--early:#6b4fa0;--result:#2b6cb0;
+  --excused:#a8a29e;--ink:#44403c;--ink-strong:#1c1917;--muted:#6b6560;--faint:#a8a29e;
+  --line:#e2ddd3;--raised:#efeae0;--surface:#ffffff;--paper:#f5f2ea;--ex-bg:#ece9e4;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:Pretendard,"Pretendard Variable","Malgun Gothic","Apple SD Gothic Neo",sans-serif;font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums}
+.wrap{max-width:1280px;margin:0 auto;padding:24px 16px 48px}
+h1{margin:0;font-size:20px;font-weight:600;color:var(--ink-strong)}
+.sub{margin:4px 0 0;color:var(--muted);font-size:13px}
+.note{margin:12px 0 0;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px;color:var(--muted)}
+.banner{margin:12px 0 0;padding:10px 14px;border-radius:8px;border:1px solid #e9b39b;border-color:color-mix(in srgb,var(--absent) 40%,#fff);background:#fcf1ec;background:color-mix(in srgb,var(--absent) 7%,#fff);color:var(--absent);font-size:13px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.ctl{margin-top:16px;padding:16px 20px;display:flex;flex-direction:column;gap:12px}
+.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.lab{width:44px;flex:none;font-size:12px;font-weight:500;color:var(--muted)}
+.seg{display:inline-flex;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.seg button{height:32px;padding:0 12px;border:0;border-radius:6px;background:none;font:inherit;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--raised);color:var(--ink-strong)}
+.chip{height:30px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--surface);font:inherit;font-size:13px;color:var(--ink);cursor:pointer}
+.chip[aria-pressed=true]{border-color:var(--accent);background:#ecf2f0;background:color-mix(in srgb,var(--accent) 10%,#fff);color:var(--accent-ink);font-weight:500}
+.chip:focus-visible,.seg button:focus-visible,.btn:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=search]{height:32px;width:220px;padding:0 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;color:var(--ink-strong);background:var(--surface)}
+.btn{height:34px;padding:0 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font:inherit;font-size:13px;font-weight:500;color:var(--ink-strong);cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.btn.primary{background:var(--accent-ink);border-color:var(--accent-ink);color:#fff}
+.btn:hover{background:var(--raised)}.btn.primary:hover{background:var(--accent)}
+.actions{margin-left:auto;display:flex;gap:8px}
+.legend{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.sw{display:inline-block;width:14px;height:14px;border-radius:3px;background:var(--ex-bg);border:1px solid var(--line);vertical-align:-2px;margin-right:4px}
+.group{margin-top:20px}
+.ghead{display:flex;align-items:baseline;gap:8px;padding:14px 20px;border-bottom:1px solid var(--line)}
+.ghead h2{margin:0;font-size:15px;font-weight:600;color:var(--ink-strong)}
+.ghead span{font-size:12px;color:var(--muted)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{border:1px solid var(--line);padding:4px 6px;text-align:center;white-space:nowrap}
+thead th{background:var(--raised);font-weight:500;color:var(--ink-strong);font-size:12px}
+td.name{text-align:left;font-weight:500;color:var(--ink-strong)}
+td.item{color:var(--muted);font-size:12px}
+td.z{color:var(--faint)}
+td.ex{background:var(--ex-bg);color:var(--muted)}
+td.tot{font-weight:600;color:var(--ink-strong)}
+td.sc{font-weight:500;color:var(--ink-strong)}
+.v{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--ink-strong)}
+.doc{font-size:11px;color:var(--muted);font-weight:400}
+.tag{display:inline-block;margin-left:4px;padding:0 6px;border-radius:4px;font-size:11px;font-weight:500;background:var(--raised);color:var(--muted)}
+tbody.stu{break-inside:avoid}
+tbody.stu tr:first-child td{border-top:1.5px solid #cfc8bb}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.skel{height:14px;border-radius:4px;background:var(--raised);margin:14px 20px}
+.foot{margin-top:16px;font-size:12px;color:var(--muted)}
+@media (max-width:640px){.actions{margin-left:0}.lab{width:100%}}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff;font-size:11px}
+  .wrap{max-width:none;padding:0}
+  .no-print{display:none!important}
+  .card{border:0;border-radius:0}
+  .group{margin-top:0;break-before:page}
+  .group:first-of-type{break-before:auto}
+  .ghead{padding:0 0 6px;border:0}
+  table{font-size:10px}
+  th,td{padding:2px 4px;border-color:#9c968c}
+  td.ex,thead th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .scroll{overflow:visible}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>미인정 출결 현황</h1>
+    <p class="sub" id="sub"></p>
+    <p class="note no-print" id="modeNote"></p>
+    <div class="banner no-print" id="banner" hidden></div>
+  </header>
+
+  <section class="card ctl no-print" aria-label="보기 조건">
+    <div class="row">
+      <span class="lab">보기</span>
+      <div class="seg" role="group" aria-label="보기 범위" id="scope">
+        <button type="button" data-v="all">전체 학생</button>
+        <button type="button" data-v="class">학급</button>
+        <button type="button" data-v="student">학생 한 명</button>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="reload" hidden>새로 고침</button>
+        <a class="btn" id="xlsx" hidden>엑셀(xlsx)</a>
+        <button type="button" class="btn primary" id="print">인쇄 · PDF</button>
+      </div>
+    </div>
+    <div class="row" id="gradeRow"><span class="lab">학년</span><span id="grades" class="row"></span></div>
+    <div class="row" id="classRow"><span class="lab">반</span><span id="classes" class="row"></span></div>
+    <div class="row" id="stuRow"><span class="lab">학생</span><input type="search" id="q" placeholder="학번 또는 이름" autocomplete="off"><span id="stuChips" class="row"></span></div>
+    <div class="row"><span class="lab">달</span><span id="months" class="row"></span></div>
+    <div class="legend"><span><span class="sw"></span>회색 칸: 제외 처리된 달 (값은 원자료 그대로)</span><span>(서류 n): 서류로 확인해 제외한 횟수</span><span>제외 반영 환산: 제외만 반영한 누적이며 생활지도 초기화는 반영하지 않습니다</span></div>
+  </section>
+
+  <main id="out"></main>
+  <p class="foot" id="foot"></p>
+</div>
+<script>
+(function(){
+  'use strict';
+  var BOOT = /*__BOOT__*/null;
+  var DATA = null;
+  var S = { scope: 'all', grade: 0, cls: 0, sid: '', months: null, q: '' };
+  var $ = function(id){ return document.getElementById(id); };
+  var ITEM_COLOR = { abs: '#c2410c', late: '#d4a017', leave: '#6b4fa0', result: '#2b6cb0' };
+
+  function el(tag, attrs, kids){
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) {
+      if (k === 'text') e.textContent = attrs[k];
+      else if (k === 'cls') e.className = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    }
+    (kids || []).forEach(function(c){ if (c != null) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+  function slash(color){
+    var ns = 'http://www.w3.org/2000/svg';
+    var s = document.createElementNS(ns, 'svg'); s.setAttribute('viewBox','0 0 16 16'); s.setAttribute('width','12'); s.setAttribute('height','12'); s.setAttribute('aria-hidden','true');
+    var r = document.createElementNS(ns, 'rect'); r.setAttribute('x','0.5'); r.setAttribute('y','0.5'); r.setAttribute('width','15'); r.setAttribute('height','15'); r.setAttribute('rx','4'); r.setAttribute('fill',color); r.setAttribute('fill-opacity','0.12');
+    var l = document.createElementNS(ns, 'line'); l.setAttribute('x1','3.5'); l.setAttribute('y1','12.5'); l.setAttribute('x2','12.5'); l.setAttribute('y2','3.5'); l.setAttribute('stroke',color); l.setAttribute('stroke-width','2'); l.setAttribute('stroke-linecap','round');
+    s.appendChild(r); s.appendChild(l); return s;
+  }
+  function order(m){ return (m - DATA.start_month + 12) % 12; }
+  function sortM(ms){ return ms.slice().sort(function(a,b){ return order(a) - order(b); }); }
+  function gradeList(){ return Object.keys(DATA.grades).map(Number).sort(); }
+  function monthsOf(g){ return (DATA.grades[String(g)] || []).map(Number); }
+  function allMonths(){
+    var set = {};
+    var gs = S.scope === 'all' && !S.grade ? gradeList() : [currentGrade()];
+    gs.forEach(function(g){ monthsOf(g).forEach(function(m){ set[m] = 1; }); });
+    return sortM(Object.keys(set).map(Number));
+  }
+  function currentGrade(){
+    if (S.scope === 'student') { var r = find(S.sid); return r ? r.grade : 0; }
+    return S.grade;
+  }
+  function find(sid){ for (var i = 0; i < DATA.students.length; i++) if (DATA.students[i].student_id === sid) return DATA.students[i]; return null; }
+  function chosenMonths(g){
+    var ms = monthsOf(g);
+    if (!S.months) return ms;
+    return ms.filter(function(m){ return S.months.indexOf(m) >= 0; });
+  }
+  function score(t){
+    var c = {}; DATA.items.forEach(function(it){ c[it.key] = DATA.rules.count[it.key] ? (t[it.key] || 0) : 0; });
+    if (DATA.rules.mode === 'simple') return [c.abs + c.late + c.leave + c.result, 0];
+    var o = c.late + c.leave + c.result, n = DATA.rules.n || 3;
+    return [c.abs + Math.floor(o / n), o % n];
+  }
+
+  // ------------------------------------------------ 칩
+  function chip(label, on, onClick){
+    var b = el('button', { type: 'button', cls: 'chip', 'aria-pressed': on ? 'true' : 'false', text: label });
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function fill(id, nodes){ var c = $(id); c.textContent = ''; nodes.forEach(function(n){ c.appendChild(n); }); }
+
+  function renderControls(){
+    Array.prototype.forEach.call($('scope').children, function(b){ b.setAttribute('aria-pressed', b.getAttribute('data-v') === S.scope ? 'true' : 'false'); });
+    var gs = gradeList();
+    $('gradeRow').hidden = S.scope === 'student';
+    var gChips = [];
+    if (S.scope === 'all') gChips.push(chip('모든 학년', !S.grade, function(){ S.grade = 0; S.months = null; render(); }));
+    gs.forEach(function(g){ gChips.push(chip(g + '학년', S.grade === g, function(){ S.grade = g; S.cls = 0; S.months = null; render(); })); });
+    fill('grades', gChips);
+
+    $('classRow').hidden = S.scope !== 'class';
+    if (S.scope === 'class') {
+      var cs = {};
+      DATA.students.forEach(function(r){ if (r.grade === S.grade) cs[r['class']] = 1; });
+      var list = Object.keys(cs).map(Number).sort(function(a,b){ return a - b; });
+      if (!S.cls || list.indexOf(S.cls) < 0) S.cls = list[0] || 0;
+      fill('classes', list.length ? list.map(function(c){ return chip(c + '반', S.cls === c, function(){ S.cls = c; render(); }); }) : [el('span', { cls: 'doc', text: '이 학년에 미인정이 있는 학생이 없습니다' })]);
+    }
+
+    $('stuRow').hidden = S.scope !== 'student';
+    if (S.scope === 'student') {
+      var q = S.q.trim(), hits = [];
+      if (q) hits = DATA.students.filter(function(r){ return r.student_id.indexOf(q) >= 0 || (r.name || '').indexOf(q) >= 0; }).slice(0, 30);
+      var cur = find(S.sid);
+      if (cur && hits.indexOf(cur) < 0) hits.unshift(cur);
+      fill('stuChips', hits.map(function(r){ return chip(r.student_id + ' ' + (r.name || ''), S.sid === r.student_id, function(){ S.sid = r.student_id; S.months = null; render(); }); }));
+    }
+
+    var ms = allMonths();
+    var mChips = [chip('모든 달', !S.months, function(){ S.months = null; render(); })];
+    ms.forEach(function(m){
+      var on = !!S.months && S.months.indexOf(m) >= 0;
+      mChips.push(chip(m + '월', on, function(){
+        var cur = S.months ? S.months.slice() : [];
+        var i = cur.indexOf(m);
+        if (i >= 0) cur.splice(i, 1); else cur.push(m);
+        S.months = cur.length ? cur : null;
+        render();
+      }));
+    });
+    fill('months', mChips);
+
+    var x = $('xlsx');
+    if (BOOT.mode === 'live') {
+      var p = ['scope=' + S.scope];
+      if (S.scope !== 'student' && S.grade) p.push('grade=' + S.grade);
+      if (S.scope === 'class' && S.cls) p.push('cls=' + S.cls);
+      if (S.scope === 'student' && S.sid) p.push('sid=' + encodeURIComponent(S.sid));
+      if (S.months) p.push('months=' + S.months.join(','));
+      x.href = location.pathname.replace(/\/$/, '') + '/report.xlsx?' + p.join('&');
+    }
+  }
+
+  // ------------------------------------------------ 표
+  function pick(){
+    var rows = DATA.students;
+    if (S.scope === 'student') rows = rows.filter(function(r){ return r.student_id === S.sid; });
+    else {
+      if (S.grade) rows = rows.filter(function(r){ return r.grade === S.grade; });
+      if (S.scope === 'class') rows = rows.filter(function(r){ return r['class'] === S.cls; });
+    }
+    var groups = {}, keys = [];
+    rows.forEach(function(r){
+      var k = r.grade * 1000 + r['class'];
+      if (!groups[k]) { groups[k] = { grade: r.grade, cls: r['class'], rows: [] }; keys.push(k); }
+      groups[k].rows.push(r);
+    });
+    keys.sort(function(a,b){ return a - b; });
+    return keys.map(function(k){ return groups[k]; });
+  }
+
+  function table(g){
+    var ms = sortM(chosenMonths(g.grade));
+    var head = el('tr', null, [el('th', { text: '번호' }), el('th', { text: '학번' }), el('th', { text: '이름' }), el('th', { text: '미인정' })]
+      .concat(ms.map(function(m){ return el('th', { text: m + '월' }); }))
+      .concat([el('th', { text: '합계' }), el('th', { text: '제외 반영 환산' })]));
+    var t = el('table', null, [el('thead', null, [head])]);
+    g.rows.forEach(function(r){
+      var body = el('tbody', { cls: 'stu' });
+      var raw = {}, doc = {};
+      DATA.items.forEach(function(it){ raw[it.key] = 0; doc[it.key] = 0; });
+      ms.forEach(function(m){ var pm = r.months[String(m)]; if (pm) DATA.items.forEach(function(it){ raw[it.key] += pm.raw[it.key]; doc[it.key] += pm.doc[it.key]; }); });
+      var eff = {}; DATA.items.forEach(function(it){ eff[it.key] = raw[it.key] - doc[it.key]; });
+      var sc = score(eff);
+      DATA.items.forEach(function(it, i){
+        var tr = el('tr');
+        if (i === 0) {
+          var nm = el('td', { cls: 'name', rowspan: '4' }, [r.name || '']);
+          if (r.status && r.status !== '재학') nm.appendChild(el('span', { cls: 'tag', text: r.status }));
+          tr.appendChild(el('td', { rowspan: '4', text: String(r.number || '') }));
+          tr.appendChild(el('td', { rowspan: '4', text: r.student_id }));
+          tr.appendChild(nm);
+        }
+        tr.appendChild(el('td', { cls: 'item', text: it.label }));
+        ms.forEach(function(m){
+          var pm = r.months[String(m)];
+          var v = pm ? pm.raw[it.key] : 0, d = pm ? pm.doc[it.key] : 0;
+          var ex = !!pm && (pm.all || d > 0);
+          var td = el('td', { cls: (ex ? 'ex ' : '') + (v ? '' : 'z') });
+          if (ex && pm.reasons && pm.reasons.length) td.title = '제외: ' + pm.reasons.join(', ');
+          if (!v) td.textContent = '-';
+          else {
+            var span = el('span', { cls: 'v' });
+            if (!ex) span.appendChild(slash(ITEM_COLOR[it.key]));
+            span.appendChild(document.createTextNode(String(v)));
+            td.appendChild(span);
+            if (!pm.all && d) td.appendChild(el('span', { cls: 'doc', text: ' (서류 ' + d + ')' }));
+          }
+          tr.appendChild(td);
+        });
+        var tt = el('td', { cls: raw[it.key] ? 'tot' : 'z', text: raw[it.key] ? String(raw[it.key]) : '-' });
+        if (doc[it.key]) tt.appendChild(el('span', { cls: 'doc', text: ' (제외 ' + doc[it.key] + ')' }));
+        tr.appendChild(tt);
+        if (i === 0) tr.appendChild(el('td', { cls: 'sc', rowspan: '4', text: sc[0] + '점' + (sc[1] ? ' (이월 ' + sc[1] + ')' : '') }));
+        body.appendChild(tr);
+      });
+      t.appendChild(body);
+    });
+    return t;
+  }
+
+  function renderTable(){
+    var out = $('out'); out.textContent = '';
+    if (S.scope === 'student' && !S.sid) {
+      out.appendChild(el('div', { cls: 'card group' }, [el('p', { cls: 'empty', text: '위 칸에 학번이나 이름을 넣고 학생을 고르십시오.' })]));
+      return;
+    }
+    var gs = pick();
+    if (!gs.length) {
+      out.appendChild(el('div', { cls: 'card group' }, [el('p', { cls: 'empty', text: '조건에 맞는 학생이 없습니다.' })]));
+      return;
+    }
+    gs.forEach(function(g){
+      var ms = sortM(chosenMonths(g.grade));
+      var title = S.scope === 'student' ? (g.rows[0].student_id + ' ' + (g.rows[0].name || '')) : (g.grade + '학년 ' + g.cls + '반');
+      var span = (ms.length ? ms[0] + '월~' + ms[ms.length - 1] + '월' : '고른 달 없음') + (S.scope === 'student' ? '' : ' · ' + g.rows.length + '명');
+      out.appendChild(el('section', { cls: 'card group' }, [
+        el('div', { cls: 'ghead' }, [el('h2', { text: title }), el('span', { text: span })]),
+        el('div', { cls: 'scroll' }, [table(g)])
+      ]));
+    });
+  }
+
+  function render(){
+    if (!DATA) return;
+    $('sub').textContent = [DATA.school_name, DATA.school_year + '학년도', DATA.generated_at + ' 기준'].filter(Boolean).join(' · ');
+    $('foot').textContent = '원자료 그대로 보여 줍니다. 제외 처리·생활지도 판정은 업무 담당 선생님 앱이 기준입니다.';
+    if (!S.grade && S.scope !== 'all') S.grade = gradeList()[0] || 0;
+    renderControls();
+    renderTable();
+  }
+
+  function skeleton(){
+    var out = $('out'); out.textContent = '';
+    var c = el('div', { cls: 'card group' });
+    for (var i = 0; i < 6; i++) c.appendChild(el('div', { cls: 'skel' }));
+    out.appendChild(c);
+  }
+
+  function load(){
+    $('banner').hidden = true;
+    if (!DATA) skeleton();
+    fetch(location.pathname.replace(/\/$/, '') + '/data', { cache: 'no-store' })
+      .then(function(r){ if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+      .then(function(d){ DATA = d; render(); })
+      .catch(function(){
+        var b = $('banner');
+        b.textContent = '자료를 불러오지 못했습니다. 업무 담당 선생님 컴퓨터에서 앱이 꺼져 있거나 공유가 꺼졌을 수 있습니다. 잠시 뒤 [새로 고침]을 누르십시오.';
+        b.hidden = false;
+        if (!DATA) $('out').textContent = '';
+      });
+  }
+
+  // ------------------------------------------------ 시작
+  Array.prototype.forEach.call($('scope').children, function(b){
+    b.addEventListener('click', function(){
+      S.scope = b.getAttribute('data-v'); S.months = null;
+      if (S.scope !== 'all' && !S.grade) S.grade = gradeList()[0] || 0;
+      render();
+      if (S.scope === 'student') $('q').focus();
+    });
+  });
+  $('q').addEventListener('input', function(e){ S.q = e.target.value; renderControls(); });
+  $('print').addEventListener('click', function(){ window.print(); });
+  $('reload').addEventListener('click', load);
+
+  if (BOOT && BOOT.mode === 'file') {
+    DATA = BOOT.data;
+    $('modeNote').textContent = '이 파일은 ' + DATA.generated_at + ' 에 만든 사본입니다. 최신 자료는 업무 담당 선생님께 다시 받으십시오. [인쇄 · PDF] 를 누른 뒤 인쇄 창에서 「PDF로 저장」 을 고르면 PDF 가 됩니다.';
+    render();
+  } else {
+    $('reload').hidden = false;
+    $('xlsx').hidden = false;
+    $('modeNote').textContent = '업무 담당 선생님 컴퓨터의 최신 자료입니다(보기 전용). [인쇄 · PDF] 를 누른 뒤 인쇄 창에서 「PDF로 저장」 을 고르면 PDF 가 됩니다.';
+    load();
+  }
+})();
+</script>
+</body>
+</html>
