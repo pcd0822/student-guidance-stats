@@ -12,7 +12,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     env:
-      GS_DEST: ${{ runner.temp }}\GuidanceStats
       GS_SOURCE: ${{ github.workspace }}
       GS_NORUN: "1"
       GS_NOSHORTCUT: "1"
@@ -20,6 +19,10 @@ jobs:
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
+      # job 수준 env 에서는 runner 문맥을 쓸 수 없어 여기서 설치 위치를 정한다
+      - name: 설치 위치 정하기
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_ENV -Value "GS_DEST=$env:RUNNER_TEMP\GuidanceStats"
       - name: installer\install.bat (로컬 원본으로 복사)
         shell: cmd
         run: installer\install.bat
@@ -35,14 +38,14 @@ jobs:
         run: powershell -NoProfile -ExecutionPolicy Bypass -File "%GS_DEST%\scripts\bootstrap.ps1"
       - name: 테스트
         shell: cmd
-        working-directory: ${{ runner.temp }}\GuidanceStats
+        working-directory: ${{ env.GS_DEST }}
         run: |
           .venv\Scripts\python.exe --version
           .venv\Scripts\python.exe -m pip install -q -r requirements-dev.txt
           .venv\Scripts\python.exe -m pytest -q
       - name: 앱 서버 확인
         shell: pwsh
-        working-directory: ${{ runner.temp }}\GuidanceStats
+        working-directory: ${{ env.GS_DEST }}
         run: |
           $p = Start-Process -PassThru -FilePath .venv\Scripts\python.exe -ArgumentList '-m','app','--no-open','--port','8765' -RedirectStandardOutput out.log -RedirectStandardError err.log
           $ok = $false
@@ -57,11 +60,11 @@ jobs:
     timeout-minutes: 30
     env:
       GS_FORCE_MANAGED: "1"
-      APP_DATA_DIR: ${{ runner.temp }}/appdata
     steps:
       - uses: actions/checkout@v4
       - name: start.sh (uv 로 Python 자동 설치) + 앱 서버 확인
         run: |
+          export APP_DATA_DIR="$RUNNER_TEMP/appdata"
           ./start.sh --no-open --port 8765 > run.log 2>&1 &
           for i in $(seq 1 300); do curl -sf http://127.0.0.1:8765/api/health && break; sleep 1; done
           cat run.log
