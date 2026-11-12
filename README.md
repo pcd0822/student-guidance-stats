@@ -108,8 +108,14 @@ pip install -r requirements-dev.txt     # 테스트 도구
 .venv/bin/python -m app --no-open --port 8765   # 백엔드만
 cd frontend && npm install && npm run dev       # 화면 개발 (/api 는 8765 로 프록시)
 cd frontend && npm run build                    # app/static 에 빌드 — 커밋해 둡니다
-git tag v1.0.1 && git push --tags               # 새 릴리스 → 학교 컴퓨터 「업데이트」가 이 판을 받음
 ```
+
+## 새 판 내기
+
+1. `app/__init__.py` 의 `__version__` 을 올립니다(예: `1.0.2`).
+2. 커밋하고 Push 합니다.
+3. GitHub 에서 설치 검사(check)가 통과하면 릴리스 `v1.0.2` 와 설치 파일이 **자동으로** 만들어집니다.
+4. 학교 컴퓨터에서 「생활지도 통계 업데이트」를 누르면 새 판을 받습니다.
 
 ## 확인할 점
 

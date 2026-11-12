@@ -1,9 +1,18 @@
-# v* 태그를 올리면 학교 컴퓨터용 설치 파일(GuidanceStats-install.zip)을 릴리스에 붙인다.
+# 설치 파일(GuidanceStats-install.zip)을 릴리스에 붙인다.
+#
+# 1) main 의 설치 검사(check)가 통과하면: app/__init__.py 의 __version__ 으로
+#    릴리스 v<버전> 이 없을 때 자동으로 만든다. → 새 판은 버전만 올려 Push 하면 된다.
+# 2) 웹에서 직접 만든 릴리스(태그 push)에도 설치 파일을 붙인다.
 name: release
 
 on:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
+    branches: [main]
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,21 +20,34 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # 검사에서 왔으면 통과했을 때만
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - name: 설치 파일 묶기
         run: |
           mkdir -p dist/GuidanceStats-install
           cp installer/install.bat installer/README.txt dist/GuidanceStats-install/
           (cd dist && zip -r GuidanceStats-install.zip GuidanceStats-install)
-      - name: 릴리스 만들기(이미 있으면 설치 파일만 바꿔 붙이기)
+      - name: 릴리스 만들기 또는 설치 파일 바꿔 붙이기
         env:
           GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/GuidanceStats-install.zip --clobber
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            TAG="$GITHUB_REF_NAME"
           else
-            gh release create "$GITHUB_REF_NAME" dist/GuidanceStats-install.zip \
-              --title "$GITHUB_REF_NAME" \
-              --notes "학교 컴퓨터(윈도우): GuidanceStats-install.zip 을 내려받아 풀고 install.bat 을 실행하십시오. 자세한 안내는 README 를 보십시오."
+            VER=$(python3 -c "import re;print(re.search(r'__version__\s*=\s*\"([^\"]+)\"', open('app/__init__.py').read()).group(1))")
+            TAG="v$VER"
+          fi
+          echo "릴리스: $TAG ($SHA)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/GuidanceStats-install.zip --clobber
+          else
+            gh release create "$TAG" dist/GuidanceStats-install.zip \
+              --target "$SHA" \
+              --title "$TAG" \
+              --notes "학교 컴퓨터(윈도우): GuidanceStats-install.zip 을 내려받아 풀고 install.bat 을 실행하십시오. 이미 설치했다면 바탕 화면의 「생활지도 통계 업데이트」를 누르십시오."
           fi
