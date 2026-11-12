@@ -33,15 +33,37 @@ jobs:
           Set-Content "$env:GS_DEST\data\keep.txt" "keep"
           cmd /c installer\install.bat
           if (-not (Test-Path "$env:GS_DEST\data\keep.txt")) { throw "data 폴더가 지워졌습니다" }
-      - name: bootstrap.ps1 (uv 로 Python 자동 설치 + 패키지)
+      # 학교 컴퓨터처럼 컴파일러(Visual Studio)를 찾지 못하게 한다 — 소스 빌드가 일어나면 실패해야 한다
+      - name: 컴파일러 숨기기(학교 컴퓨터 흉내)
+        shell: pwsh
+        run: |
+          $vw = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vw) { Rename-Item $vw 'vswhere.exe.hidden' }
+          if (Test-Path $vw) { throw "vswhere 를 숨기지 못했습니다" }
+      - name: bootstrap.ps1 (uv 로 Python 최신판 자동 설치 + 패키지)
         shell: cmd
         run: powershell -NoProfile -ExecutionPolicy Bypass -File "%GS_DEST%\scripts\bootstrap.ps1"
+      - name: 패키지가 없는 Python 이 이미 깔린 상태에서 다시 실행 → 3.13 으로 바꿔야 함
+        shell: pwsh
+        working-directory: ${{ env.GS_DEST }}
+        run: |
+          $v = (& .venv\Scripts\python.exe -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
+          Write-Host "지금 Python: $v"
+          if ($v -eq '3.13') { Write-Host '이미 3.13 이라 이 시험은 건너뜁니다'; exit 0 }
+          Remove-Item .venv\.requirements.sha256 -ErrorAction SilentlyContinue
+          $env:GS_SIMULATE_NO_WHEEL = $v
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\bootstrap.ps1
+          if ($LASTEXITCODE -ne 0) { throw "bootstrap 실패($LASTEXITCODE)" }
+          $after = (& .venv\Scripts\python.exe -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
+          if ($after -ne '3.13') { throw "3.13 으로 바뀌지 않았습니다: $after" }
+          & .venv\Scripts\python.exe -c "import uvicorn, fastapi, lxml, openpyxl; print('패키지 OK')"
+          if ($LASTEXITCODE -ne 0) { throw "패키지가 없습니다" }
       - name: 테스트
         shell: cmd
         working-directory: ${{ env.GS_DEST }}
         run: |
           .venv\Scripts\python.exe --version
-          .venv\Scripts\python.exe -m pip install -q -r requirements-dev.txt
+          .venv\Scripts\python.exe -m pip install -q --prefer-binary --only-binary=lxml,pydantic-core,cffi -r requirements-dev.txt
           .venv\Scripts\python.exe -m pytest -q
       - name: 앱 서버 확인
         shell: pwsh

@@ -69,8 +69,46 @@ def _read_xls(data: bytes) -> List[List[Any]]:
     return [sh.row_values(i) for i in range(sh.nrows)]
 
 
+def _span(cell: Any, name: str) -> int:
+    try:
+        return max(1, int(str(cell.get(name) or "1").strip()))
+    except ValueError:
+        return 1
+
+
+def html_table_grid(table: Any) -> List[List[Any]]:
+    """HTML <table> → 2차원 배열. 병합(rowspan·colspan)된 칸은 같은 값으로 채운다
+    (예전에 쓰던 pandas.read_html 과 같은 방식)."""
+    grid: List[List[Any]] = []
+    pending: Dict[tuple, Any] = {}  # (행, 열) → 위에서 내려온 병합 칸 값
+    rows = [tr for tr in table.iter("tr") if tr.getparent() is not None]
+    for r, tr in enumerate(rows):
+        line: List[Any] = []
+        c = 0
+        for td in tr:
+            if not isinstance(td.tag, str) or td.tag.lower() not in ("td", "th"):
+                continue
+            while (r, c) in pending:
+                line.append(pending.pop((r, c)))
+                c += 1
+            text = " ".join(td.text_content().split())
+            val: Any = text if text else None
+            rs, cs = _span(td, "rowspan"), _span(td, "colspan")
+            for dc in range(cs):
+                line.append(val)
+                for dr in range(1, rs):
+                    pending[(r + dr, c + dc)] = val
+            c += cs
+        while (r, c) in pending:
+            line.append(pending.pop((r, c)))
+            c += 1
+        grid.append(line)
+    return grid
+
+
 def _read_html(data: bytes) -> List[List[Any]]:
-    import pandas as pd
+    """나이스의 .xls 가 실제로는 HTML 표인 경우. lxml 만으로 읽는다(pandas 불필요)."""
+    from lxml import html as lxml_html
 
     text = None
     for enc in ("utf-8", "cp949", "euc-kr"):
@@ -82,17 +120,20 @@ def _read_html(data: bytes) -> List[List[Any]]:
     if text is None or "<t" not in text.lower():
         raise ParseError("엑셀(.xlsx/.xls) 파일을 읽지 못했습니다")
     try:
-        tables = pd.read_html(io.StringIO(text), header=None, flavor="lxml")
+        doc = lxml_html.fromstring(text)
     except Exception as e:  # pragma: no cover - 형식 오류
         raise ParseError("표를 찾지 못했습니다: %s" % e)
-    if not tables:
+    # 안쪽에 다른 표가 없는 표만(바깥 틀 표 제외)
+    tables = [t for t in doc.iter("table") if not list(t.iter("table"))[1:]]
+    grids = [html_table_grid(t) for t in tables]
+    grids = [g for g in grids if g]
+    if not grids:
         raise ParseError("표를 찾지 못했습니다")
-    rows: List[List[Any]] = []
     # 페이지마다 표가 나뉘어 있을 수 있으니 열이 충분한 표를 차례로 이어 붙인다
-    wide = [t for t in tables if t.shape[1] >= 20] or [max(tables, key=lambda t: t.shape[0])]
-    for t in wide:
-        for rec in t.itertuples(index=False):
-            rows.append([None if (isinstance(v, float) and math.isnan(v)) else v for v in rec])
+    wide = [g for g in grids if max(len(r) for r in g) >= 20] or [max(grids, key=len)]
+    rows: List[List[Any]] = []
+    for g in wide:
+        rows.extend(g)
     return rows
 
 

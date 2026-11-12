@@ -72,17 +72,18 @@ make_managed_venv() {
   fi
 }
 
-MANAGED=0
 if ! venv_ok; then
   if [ -z "${GS_FORCE_MANAGED:-}" ] && PY="$(find_system_python)"; then
     echo "가상 환경을 만듭니다($("$PY" --version))…"
     "$PY" -m venv --clear .venv
   else
     make_managed_venv ""
-    MANAGED=1
   fi
 fi
 echo "$(.venv/bin/python --version) 로 실행합니다."
+
+# 컴파일이 필요한 패키지는 소스에서 빌드하지 않는다. 맞는 설치 파일이 없으면 바로 실패하고 3.13 으로 다시 시도.
+PIP_ARGS=(--prefer-binary --only-binary=lxml,pydantic-core,cffi,pyobjc-core --disable-pip-version-check)
 
 install_requirements() {
   local hash_file=.venv/.requirements.sha256
@@ -91,17 +92,25 @@ install_requirements() {
   old_hash=$(cat "$hash_file" 2>/dev/null || true)
   if [ "$new_hash" != "$old_hash" ]; then
     echo "필요한 패키지를 설치합니다(처음 한 번, 몇 분 걸릴 수 있습니다)…"
-    .venv/bin/python -m pip install --upgrade pip >/dev/null || return 1
-    .venv/bin/python -m pip install -r requirements.txt || return 1
+    .venv/bin/python -m pip install --upgrade pip "${PIP_ARGS[@]}" >/dev/null || return 1
+    .venv/bin/python -m pip install -r requirements.txt "${PIP_ARGS[@]}" || return 1
     # 앱 창 패키지는 실패해도 브라우저로 열 수 있으니 멈추지 않는다
-    .venv/bin/python -m pip install -r requirements-window.txt || echo "앱 창 패키지를 설치하지 못해 기본 브라우저로 엽니다."
+    .venv/bin/python -m pip install -r requirements-window.txt "${PIP_ARGS[@]}" || echo "앱 창 패키지를 설치하지 못해 기본 브라우저로 엽니다."
     echo "$new_hash" > "$hash_file"
   fi
 }
 
+# .venv 가 이 폴더의 .tools 에 받은 Python 으로 만든 것인지
+managed_venv() {
+  local base
+  base=$(.venv/bin/python -c 'import sys; print(sys.base_prefix)' 2>/dev/null) || return 1
+  case "$base" in "$TOOLS"*) return 0 ;; *) return 1 ;; esac
+}
+
 if ! install_requirements; then
-  if [ "$MANAGED" = "1" ]; then
-    echo "최신 Python 에 맞는 패키지가 아직 없어 Python $FALLBACK_PY 로 다시 시도합니다…"
+  ver=$(.venv/bin/python -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null || true)
+  if managed_venv && [ "$ver" != "$FALLBACK_PY" ]; then
+    echo "Python $ver 에 맞는 패키지가 아직 없어 Python $FALLBACK_PY 로 다시 시도합니다…"
     make_managed_venv "$FALLBACK_PY"
     install_requirements || pause_exit "패키지를 설치하지 못했습니다. 인터넷 연결을 확인하십시오."
   else
