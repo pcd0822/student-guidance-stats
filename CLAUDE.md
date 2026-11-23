@@ -44,6 +44,7 @@ Claude Code 가 이 저장소에서 일할 때 먼저 읽는 문서입니다. �
   | 1.0.3 | pywebview recursion 문제를 고침 |
   | 1.0.4 | 학생 관리(학적), 제외 처리 개선, 저장 표시·스피너 |
   | 1.0.5 | 미인정 현황 공유(교내망 링크·공유 파일), xlsx·PDF 내려받기 |
+  | 1.0.6 | 검은 창 없이 켜기(바로 가기 → start.vbs → pythonw -m app --launcher) |
 
 ## 구조
 
@@ -66,6 +67,7 @@ tests/               pytest(59개). 샘플 xlsx 가 없으면 일부는 건너�
 scripts/             bootstrap.ps1(윈도우 실행 준비), install.ps1(설치·업데이트·바로 가기)
 installer/           install.bat + README.txt → 릴리스 zip
 start.sh / start.command / start.bat   실행 스크립트
+start.vbs            윈도우 바탕 화면 바로 가기가 부름(검은 창 없음). .venv 가 없으면 start.bat 창으로
 .github/workflows/   check.yml, release.yml
 ```
 
@@ -109,6 +111,7 @@ cd frontend && npm run build                 # app/static 에 빌드(커밋 대�
 - **공유 서버 시험**은 `GS_SHARE_HOST=127.0.0.1` 로 돌립니다(`tests/test_share.py`). 0.0.0.0 으로 열면 개발 PC 에 윈도우 방화벽 창이 뜹니다.
 - `components/ui.tsx` 의 `Field` 는 `<label>` 이라 안에 버튼(칩)을 넣으면 제목 글자를 눌렀을 때 첫 버튼이 눌립니다. 칩 묶음은 div 로 감쌉니다(`ReportShare.tsx` 의 `Row`).
 - **DB 는 마이그레이션이 없습니다**(`CREATE TABLE IF NOT EXISTS` 만). 새 표는 괜찮지만 기존 표에 열을 더하면 이미 쓰는 학교 PC 에서 업데이트 뒤 오류가 납니다. 열을 더할 때는 `ALTER TABLE … ADD COLUMN` 을 함께 넣습니다. 설정값은 `settings` 표의 키로 두면 안전합니다(공유 설정 `share` 처럼).
+- **검은 창 없이 켜기(v1.0.6)**: 바로 가기 → `wscript start.vbs` → `pythonw -m app --launcher`. pythonw 는 `sys.stdout` 이 None 이라 출력은 `data/launch.log` 로 돌리고, 켜지 못하면 알림 상자를 띄웁니다. 패키지 설치가 필요하면(`.venv/.requirements.sha256` 이 `bootstrap.ps1` 의 Get-ReqHash 와 다르면) 또는 pywebview 를 못 쓰면 보이는 `start.bat` 창으로 넘기고, `GS_HANDOFF` 로 되풀이를 막습니다. 브라우저 모드는 서버를 끌 창이 필요하므로 언제나 start.bat 창에서 돕니다. `requirements_hash` 는 `tests/test_launcher.py` 가 PowerShell 값과 대조합니다.
 
 ## 이미 확정된 결정
 

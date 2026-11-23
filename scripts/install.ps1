@@ -36,7 +36,9 @@ if (-not $NoShortcut) {
     $desktop = [Environment]::GetFolderPath('Desktop')
     $sh = New-Object -ComObject WScript.Shell
     $lnk = $sh.CreateShortcut((Join-Path $desktop '생활지도·학생선도 통계.lnk'))
-    $lnk.TargetPath = Join-Path $Dest 'start.bat'
+    # 검은 창 없이 켠다(start.vbs → pythonw). 설치가 더 필요하면 start.vbs 가 start.bat 창으로 넘긴다
+    $lnk.TargetPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $lnk.Arguments = '"' + (Join-Path $Dest 'start.vbs') + '"'
     $lnk.WorkingDirectory = $Dest
     $lnk.IconLocation = "$env:SystemRoot\System32\imageres.dll,109"
     $lnk.Description = '생활지도·학생선도 통계 실행'
@@ -58,7 +60,7 @@ Write-Host ''
 Write-Host '설치 파일 복사를 마쳤습니다.' -ForegroundColor Green
 if ($NoRun) { exit 0 }
 Write-Host '앱을 실행합니다. 처음에는 Python·패키지 설치로 몇 분 걸립니다.'
-Write-Host '앱을 쓰는 동안 이 검은 창을 닫지 마십시오(닫으면 앱도 꺼집니다).'
+Write-Host '준비가 끝나면 이 창은 저절로 닫히고 앱 창이 열립니다.'
 Write-Host ''
 & cmd /c (Join-Path $Dest 'start.bat')
 exit $LASTEXITCODE

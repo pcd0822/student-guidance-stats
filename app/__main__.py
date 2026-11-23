@@ -20,6 +20,56 @@ from pathlib import Path
 TITLE = "생활지도·학생선도 통계"
 
 
+def requirements_hash(root: Path) -> str:
+    """scripts/bootstrap.ps1 의 Get-ReqHash 와 같은 값: requirements.txt + requirements-window.txt 바이트의 SHA-256."""
+    import hashlib
+
+    data = (root / "requirements.txt").read_bytes() + (root / "requirements-window.txt").read_bytes()
+    return hashlib.sha256(data).hexdigest()
+
+
+def requirements_ready(root: Path) -> bool:
+    """패키지 설치가 지금 requirements 와 맞는지(맞지 않으면 start.bat 이 창을 띄워 설치해야 한다)."""
+    f = root / ".venv" / ".requirements.sha256"
+    try:
+        return f.read_text(encoding="ascii").strip() == requirements_hash(root)
+    except OSError:
+        return False
+
+
+def hand_over(root: Path, extra: list[str]) -> None:
+    """창 없이 켤 수 없을 때: start.bat 을 보이는 창으로 연다(설치 진행·오류가 보이게).
+    GS_HANDOFF 를 남겨 start.bat 이 다시 창 없이 넘겨도 같은 일을 되풀이하지 않게 한다."""
+    env = dict(os.environ, GS_HANDOFF="1")
+    subprocess.Popen(["cmd.exe", "/c", str(root / "start.bat"), *extra], cwd=str(root), env=env,
+                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+
+
+def launcher_streams() -> None:
+    """pythonw(창 없음)로 켜면 sys.stdout·stderr 가 None 이라 print 가 실패한다 → data/launch.log 로."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    from . import paths
+
+    log = paths.data_dir() / "launch.log"
+    mode = "w" if log.exists() and log.stat().st_size > 1_000_000 else "a"
+    f = open(log, mode, encoding="utf-8", buffering=1)
+    sys.stdout = sys.stdout or f
+    sys.stderr = sys.stderr or f
+
+
+def alert(text: str) -> None:
+    """창이 없을 때 오류를 알리는 윈도우 알림 상자."""
+    print(text, flush=True)
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            ctypes.windll.user32.MessageBoxW(None, text, TITLE, 0x10)
+        except Exception:
+            pass
+
+
 def free_port(preferred: int = 0) -> int:
     for p in ([preferred] if preferred else []) + [0]:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -161,7 +211,24 @@ def main() -> None:
     ap.add_argument("--no-open", action="store_true", help="서버만 실행합니다(개발용)")
     ap.add_argument("--window-selftest", type=int, default=0, metavar="초",
                     help="앱 창을 열어 화면·창 기능이 이어졌는지 확인하고 닫습니다(검사용)")
+    ap.add_argument("--launcher", action="store_true",
+                    help="start.vbs 가 창 없이(pythonw) 켤 때. 설치가 필요하거나 앱 창을 못 열면 start.bat 으로 넘깁니다")
     args = ap.parse_args()
+
+    from . import paths
+
+    if args.launcher:
+        launcher_streams()
+        if not requirements_ready(paths.ROOT_DIR) and not os.environ.get("GS_HANDOFF"):
+            print("패키지 설치가 필요해 start.bat 창으로 넘깁니다", flush=True)
+            hand_over(paths.ROOT_DIR, [])
+            return
+        try:
+            import webview  # noqa: F401
+        except Exception as e:
+            print("앱 창 패키지를 불러오지 못해 start.bat(브라우저)로 넘깁니다: %s" % e, flush=True)
+            hand_over(paths.ROOT_DIR, ["--browser"])
+            return
 
     # 윈도우에서 출력을 파일로 돌리면(cp1252 등) 한글 print 가 앱을 멈추지 않게 한다
     for stream in (sys.stdout, sys.stderr):
@@ -194,6 +261,10 @@ def main() -> None:
                 sys.exit(_selftest["code"])
             return
         except Exception as e:
+            if args.launcher:  # 창이 없으니 서버를 끌 방법이 없다 → 보이는 창(start.bat --browser)으로 넘긴다
+                print("앱 창을 열지 못해 start.bat(브라우저)로 넘깁니다: %s" % e, flush=True)
+                hand_over(paths.ROOT_DIR, ["--browser"])
+                return
             print("앱 창을 열지 못해 브라우저로 엽니다: %s" % e, flush=True)
 
     webbrowser.open(url)
@@ -206,4 +277,14 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    if "--launcher" in sys.argv:
+        try:
+            main()
+        except Exception:
+            import traceback
+
+            traceback.print_exc()
+            alert("생활지도·학생선도 통계를 켜지 못했습니다.\n자세한 내용: data\\launch.log\n"
+                  "계속 안 되면 프로그램 폴더의 start.bat 을 실행해 창의 내용을 확인하십시오.")
+    else:
+        main()

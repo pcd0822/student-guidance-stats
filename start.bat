@@ -11,5 +11,11 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+rem Setup is done: with no arguments, run the app window without a console and close this window.
+rem With arguments (e.g. --browser, --no-open) it keeps running here as before.
+if "%~1"=="" if exist ".venv\Scripts\pythonw.exe" (
+  start "" ".venv\Scripts\pythonw.exe" -m app --launcher
+  exit /b 0
+)
 ".venv\Scripts\python.exe" -m app %*
 if errorlevel 1 pause
